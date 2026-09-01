@@ -1,0 +1,30 @@
+target/
+!.mvn/wrapper/maven-wrapper.jar
+*.class
+*.jar
+*.war
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.settings/
+.classpath
+.project
+
+# Env & secrets
+.env
+.env.*
+*.local
+application-local.yml
+
+# Logs
+logs/
+*.log
+
+# Uploads (local storage profile)
+uploads/
+
+# OS
+.DS_Store
+Thumbs.db

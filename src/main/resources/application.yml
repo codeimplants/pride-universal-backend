@@ -1,0 +1,93 @@
+spring:
+  application:
+    name: pride-universal-backend
+
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/pride_universal}
+    username: ${DB_USER:pride}
+    password: ${DB_PASSWORD:pride_dev_password}
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+
+  jpa:
+    hibernate:
+      # Flyway owns the schema. Never let Hibernate touch it.
+      ddl-auto: validate
+    open-in-view: false          # avoids lazy-loading in the view layer (N+1 source)
+    properties:
+      hibernate:
+        jdbc.time_zone: Asia/Kolkata
+        format_sql: true
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+  jackson:
+    # Java camelCase <-> JSON snake_case, matching the existing frontend contract
+    property-naming-strategy: SNAKE_CASE
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+
+  threads:
+    virtual:
+      enabled: true              # Java 21 virtual threads for request handling
+
+  cache:
+    type: caffeine
+
+app:
+  jwt:
+    # Override in prod. Must be >= 32 bytes for HS256.
+    secret: ${JWT_SECRET:dev-only-secret-change-me-in-production-32b+}
+    access-token-ttl: PT12H
+    refresh-token-ttl: P30D
+    issuer: pride-universal
+
+  otp:
+    length: 6
+    ttl: PT5M
+    max-attempts: 5
+    resend-cooldown: PT60S
+    # Dev convenience: when true, OTP is logged instead of sent via SMS.
+    # MUST be false in production.
+    dev-mode: ${OTP_DEV_MODE:true}
+
+  sms:
+    provider: ${SMS_PROVIDER:console}   # console | msg91
+    msg91:
+      auth-key: ${MSG91_AUTH_KEY:}
+      template-id: ${MSG91_TEMPLATE_ID:}
+      sender-id: ${MSG91_SENDER_ID:PRIDEU}
+
+  storage:
+    provider: ${STORAGE_PROVIDER:local}  # local | s3
+    local:
+      base-path: ${STORAGE_PATH:./uploads}
+    max-file-size-mb: 10
+
+  cors:
+    allowed-origins: ${CORS_ORIGINS:http://localhost:5173,http://localhost:8081,exp://localhost:8081}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: when-authorized
+
+server:
+  port: ${PORT:8080}
+  error:
+    include-message: always
+    include-stacktrace: never
+
+logging:
+  level:
+    com.prideuniversal: DEBUG
+    org.springframework.security: INFO
