@@ -292,12 +292,377 @@ is exactly what `sessionStorage` couldn't do.
 
 ---
 
+## Entry 005 — First run: three bugs the compiler could not catch
+
+**Files:** [`RoleConverter.java`](../src/main/java/com/prideuniversal/common/RoleConverter.java),
+[`User.java`](../src/main/java/com/prideuniversal/domain/user/User.java),
+[`SecurityErrorResponder.java`](../src/main/java/com/prideuniversal/config/SecurityErrorResponder.java),
+[`SecurityConfig.java`](../src/main/java/com/prideuniversal/config/SecurityConfig.java),
+[`GlobalExceptionHandler.java`](../src/main/java/com/prideuniversal/common/GlobalExceptionHandler.java)
+
+### What it solves
+
+Entries 001–004 were written without ever being compiled or run. This entry is
+the first execution: Postgres up, Flyway applied, app started, auth exercised
+end to end with `curl`.
+
+The headline result is the lesson. **All 30 files compiled on the first
+attempt — zero syntax or type errors — and there were still three real bugs.**
+Two of them would have reached production. Every one lived in the gap
+*between* two components, which is precisely the region a compiler cannot see:
+it type-checks each side of a boundary, never the agreement across it.
+
+Worth internalising: "it compiles" is a statement about one file at a time.
+"It runs" is a statement about the system.
+
+### Bug 1 — Two mapping layers, one enum, one told
+
+`User.role` was annotated `@Enumerated(EnumType.STRING)`, with a comment
+stating it stored the lowercase code. It did not. `@Enumerated(STRING)`
+persists `Enum.name()` — `"ADMIN"` — while the `ck_user_role` CHECK constraint
+only accepts `'admin'`. Every insert failed:
+
+```
+ERROR: new row for relation "app_user" violates check constraint "ck_user_role"
+```
+
+The trap is that `Role` *already* carried `@JsonValue getCode()`, so the
+codebase looked like it mapped to lowercase everywhere. But `@JsonValue` is a
+**Jackson** annotation. It governs JSON serialisation. JPA has never heard of
+it. Two independent mapping layers sharing one enum, and each has to be told
+separately.
+
+Fixed with a JPA `AttributeConverter` (`RoleConverter`) rather than by
+loosening the constraint, because the lowercase code is the contract the JWT
+claim and the JSON API already use — the database was the odd one out.
+`autoApply = true` means the 10 domains still to be built cannot reintroduce
+the bug by forgetting an annotation.
+
+> Note what caught this: the CHECK constraint from Entry 001. Without it the
+> row would have inserted `'ADMIN'` happily and the bug would have surfaced
+> much later as a mysterious authorisation failure. This is the argument for
+> constraints in the database rather than only in application code.
+
+### Bug 2 — `@RestControllerAdvice` cannot see the filter chain
+
+`GlobalExceptionHandler` had correct-looking handlers mapping
+`AuthenticationException` → 401 and `AccessDeniedException` → 403.
+**Neither ever ran.** An unauthenticated request got a bare `403` with an empty
+body.
+
+`@RestControllerAdvice` only handles exceptions that escape the
+`DispatcherServlet`. Spring Security rejects requests in the servlet **filter
+chain**, which sits *in front of* the DispatcherServlet — so the request is
+refused before any controller advice is in scope. `ExceptionTranslationFilter`
+handles it instead, and with no collaborators configured it defaults to an
+empty 403.
+
+The fix wires an `AuthenticationEntryPoint` and an `AccessDeniedHandler`
+(`SecurityErrorResponder`) into `http.exceptionHandling(...)`.
+
+Why the status code is worth caring about, rather than a pedantic detail:
+
+| Code | Means | Correct client reaction |
+|---|---|---|
+| 401 | "I don't know who you are." | Refresh the token, retry silently |
+| 403 | "I know who you are; no." | Show the user a message |
+
+Collapsing both into 403 would make the React Native app tell a resident whose
+token merely expired that they are *not allowed in* — instead of refreshing.
+A phase-2 bug, fixed in phase 1.
+
+### Bug 3 — A catch-all that relabelled client errors as server errors
+
+`@ExceptionHandler(Exception.class)` matches *everything*, including the typed
+exceptions Spring MVC raises for ordinary client mistakes. Observed:
+
+| Request | Was | Should be |
+|---|---|---|
+| GET an unmapped path | 500 `internal_error` | 404 |
+| POST malformed JSON | 500 `internal_error` | 400 |
+| GET a POST-only endpoint | 500 `internal_error` | 405 |
+
+Each was also logged at ERROR *with a stack trace*. A single typo'd URL from
+the mobile app would have looked like a server fault — and in production, real
+500s would be buried under that noise.
+
+Rather than enumerate every Spring MVC exception, the catch-all now asks the
+exception itself: Spring 6's `ErrorResponse` interface is implemented by those
+exceptions and already carries the right status. Honouring it fixes 405 and 415
+without a handler being written for either — verified: 405 came back correct
+with no code naming it.
+
+### Interview questions this maps to
+
+**Q: What does `@Enumerated(EnumType.STRING)` store, and when is it wrong?**
+It stores `Enum.name()`. It is wrong when the database vocabulary differs from
+the Java constant names — a lowercase code, a legacy abbreviation, a value
+shared with another system. Use an `AttributeConverter` then. And never
+`ORDINAL`: reordering the enum silently reassigns every existing row.
+
+**Q: Why did your `@RestControllerAdvice` not catch the security exception?**
+Because Spring Security operates as a servlet filter, before the
+DispatcherServlet. Controller advice only covers exceptions escaping the
+dispatch. Security failures need an `AuthenticationEntryPoint` /
+`AccessDeniedHandler`.
+
+**Q: 401 vs 403?**
+401 = unauthenticated (who are you?). 403 = authenticated but unauthorised
+(I know, and no). The client contract depends on it: 401 triggers a token
+refresh, 403 does not.
+
+**Q: What is wrong with `@ExceptionHandler(Exception.class)`?**
+Nothing, as a last resort — but it swallows framework exceptions that already
+carry correct statuses, turning client errors into 500s and destroying the
+signal-to-noise ratio of your error logs. Handle the typed cases first, or
+inspect for `ErrorResponse`.
+
+**Q: Your code compiled and the schema was valid. Why did it still fail?**
+Because both are single-component checks. The failures were all agreements
+*between* components: JPA vs a CHECK constraint, controller advice vs the
+filter chain, a catch-all vs framework exception types. That is the case for
+integration tests over unit tests at boundaries.
+
+### Verified behaviour (first end-to-end run)
+
+| Check | Result |
+|---|---|
+| Flyway `V1` applied to Postgres 16 | ✅ 16 tables, `success = t` |
+| Hibernate `ddl-auto: validate` vs schema | ✅ passes |
+| OTP send → verify → token pair | ✅ |
+| Resident auto-provisioned from flat contact | ✅ role `resident`, flat linked |
+| Seeder idempotency on restart | ✅ "already present, skipping" |
+| OTP resend cooldown | ✅ 429 |
+| OTP single-use (replay) | ✅ 401 |
+| Anonymous → protected route | ✅ 401 |
+| Resident → admin route | ✅ 403 |
+| **Forged `role=admin` JWT** | ✅ **401 — signature check holds** |
+| Admin → admin route | ✅ 200 |
+
+The forged-token row is Entry 004's "Your turn" step 4, now executed: the exact
+attack the base44 app permitted is rejected.
+
+### Your turn
+
+1. Reproduce Bug 1 from the database side. Open `psql` and run
+   `INSERT INTO app_user (id, mobile, display_name, role, is_active, created_date, updated_date, version)
+   VALUES (gen_random_uuid(), '9999999999', 'Test', 'ADMIN', true, now(), now(), 0);`
+   Read the error. Then retry with `'admin'`. That two-line experiment is the
+   whole bug.
+2. Delete the `@Converter(autoApply = true)` annotation from `RoleConverter`
+   (keep the class) and restart. Predict the failure *before* you run it.
+3. **Exercise — the tests that would have caught these.** There are still no
+   tests. Write `AuthFlowIntegrationTest` using `@SpringBootTest` +
+   `@AutoConfigureMockMvc` + Testcontainers (`postgres:16-alpine`), asserting:
+   anonymous `/api/auth/me` → 401; resident → `/actuator/metrics` → 403; a
+   token with a tampered `role` claim → 401; an unmapped path → 404.
+   Each one pins a bug fixed above so it cannot silently return.
+4. Note *why* Testcontainers and not H2: the schema uses `gen_random_uuid()`,
+   the `~` regex operator and `TIMESTAMPTZ`. H2 has none of them. The bug in
+   this entry was caught by a Postgres CHECK constraint — a fake database would
+   have hidden it.
+
+---
+
+## Entry 006 — The reference CRUD slice, and the first tests
+
+**Files:** [`FlatDtos.java`](../src/main/java/com/prideuniversal/domain/flat/dto/FlatDtos.java),
+[`FlatService.java`](../src/main/java/com/prideuniversal/domain/flat/FlatService.java),
+[`FlatController.java`](../src/main/java/com/prideuniversal/domain/flat/FlatController.java),
+[`AbstractIntegrationTest.java`](../src/test/java/com/prideuniversal/AbstractIntegrationTest.java),
+[`AuthFlowIntegrationTest.java`](../src/test/java/com/prideuniversal/auth/AuthFlowIntegrationTest.java),
+[`FlatApiIntegrationTest.java`](../src/test/java/com/prideuniversal/domain/flat/FlatApiIntegrationTest.java)
+
+### What it solves
+
+Two things at once: the CRUD pattern every remaining domain will copy, and the
+repository's first tests. **28 tests, all passing, against a real Postgres 16
+container.**
+
+Doing them together was deliberate. The slice is the thing the next ten domains
+imitate, so it is worth having proof that it behaves as described rather than
+only a claim that it does — and, as it turned out, the tests found a bug in the
+slice within minutes.
+
+### Decision 1 — Two response records, not one filtered record
+
+A flat row carries owner and tenant mobile numbers, vehicle registrations and
+share certificate numbers. In base44 all of it was readable by anyone who could
+reach the URL. That single fact is why this rewrite exists, so the flat API is
+where it has to be answered properly.
+
+| Type | Contains | Who gets it |
+|---|---|---|
+| `FlatSummary` | wing, number, floor, resident name | any authenticated user |
+| `FlatDetail` | everything | committee, or a resident's own flat |
+
+The alternative — one fat DTO with contact fields nulled out for residents —
+works right up until someone adds a field and forgets to null it. **A type that
+never held the data cannot be made to spill it.** The nulling approach fails
+open; this one fails closed.
+
+`GET /api/flats` therefore returns summaries *even to an admin*. Full records
+are fetched one at a time, where the permission check is unambiguous.
+
+### Decision 2 — Authorisation on the service, not the controller
+
+`@PreAuthorize` sits on `FlatService`, not `FlatController`.
+
+A controller is only one way in. A scheduled job, another service, or a future
+GraphQL layer reaches the same method without passing the controller — and a
+rule enforced at the edge is a rule the next entry point silently skips.
+
+`SecurityConfig`'s URL rules still exist and still matter. They are a coarse
+outer fence; the method annotations are the actual decision. Defence in depth
+means one mistake is not a breach.
+
+### Decision 3 — Optimistic locking, in two layers on purpose
+
+`PUT /api/flats/{id}` requires the `version` the client last read.
+
+1. **Explicit comparison** in the service: catches the ordinary case — two
+   committee members with the same screen open — and returns a clean 409 before
+   doing any work.
+2. **Hibernate's `@Version` column**: catches what layer 1 cannot. Two requests
+   can both read version 3, both pass the check, and only then race to write.
+   The loser fails at flush with
+   `ObjectOptimisticLockingFailureException` — a subclass of the exception
+   thrown by layer 1, so both surface identically as 409.
+
+Layer 1 is the friendly early exit. Layer 2 is the guarantee. A check-then-act
+in application code is never atomic by itself; it needs the database to make it
+so.
+
+Sending no version at all is a **400**, never a silent overwrite — "I didn't
+know about concurrency" must not be a way to win a race.
+
+### Decision 4 — Delete is deactivation
+
+Bills, complaints and payment history all reference `flat`. A hard delete would
+either cascade financial records away or fail on a foreign key. `DELETE` sets
+`is_active = false`, which removes the flat from the directory and leaves the
+ledger intact. It is idempotent: deactivating twice is not an error.
+
+Note the permission split — secretaries may *edit* the register, but only
+admin/chairman may *deactivate*. Losing a flat from the directory is a bigger
+event than fixing a typo in an owner's name.
+
+### Bug 4 — The stale version echo (found by a test, not by hand)
+
+`updateWithCurrentVersionSucceeds` failed on the first run:
+
+```
+JSON path "$.version" expected:<1> but was:<0>
+```
+
+The update had succeeded — owner name changed, 200 returned — but the response
+carried version `0`, the value the client had sent.
+
+**Why:** Hibernate increments `@Version` at *flush*, and with a plain
+`save()` inside a transaction the flush happens at commit — after the service
+has already built the response DTO. So the API returned a version that was
+already wrong by the time the caller read it.
+
+**Why it matters:** the client's *next* update sends the version the API just
+gave it, gets a 409, and has no way out except re-fetching. Two consecutive
+edits were impossible. Fixed with `saveAndFlush`, and the test now asserts the
+property that actually matters — that a second update using the returned
+version succeeds.
+
+Worth noticing: this is the first bug in this project found by a test rather
+than by a human poking at `curl`. It is also one that manual testing would
+plausibly have missed, because a single update looks completely fine.
+
+### The Testcontainers / Docker 29 incompatibility
+
+The first test run could not start a container at all:
+
+```
+NpipeSocketClientProviderStrategy: failed with exception BadRequestException
+(Status 400: client version 1.32 is too old.
+             Minimum supported API version is 1.41)
+```
+
+Spring Boot 3.5.0 manages Testcontainers **1.21.0**, which ships docker-java
+3.4.2 and negotiates Docker API 1.32. Docker Engine 29 refuses anything below
+1.41. Fixed by overriding `<testcontainers.version>` to **2.0.5**
+(docker-java 3.7.1). Two migration notes for 2.x:
+
+- modules were renamed — `org.testcontainers:postgresql` is now
+  `org.testcontainers:testcontainers-postgresql`;
+- `PostgreSQLContainer` moved to `org.testcontainers.postgresql` and is **no
+  longer generic** — the old self-referential `PostgreSQLContainer<SELF>` is
+  gone, so `new PostgreSQLContainer<>(...)` no longer compiles.
+
+The general lesson: a managed dependency version is a *default*, not a law.
+When the environment moves faster than the framework's BOM, override it — and
+write down why, or the next person will "tidy up" the override.
+
+### Interview questions this maps to
+
+**Q: Where do you put authorisation — controller or service?**
+Service. The controller is one entry point of several; a rule on the edge is
+skipped by every other caller. URL rules stay as a coarse outer layer.
+
+**Q: How do you stop two users overwriting each other?**
+Optimistic locking with a `@Version` column. The client sends the version it
+read; a mismatch is a 409. An explicit comparison alone is not enough — it is a
+check-then-act race — so the version column at flush time is the real guard.
+Pessimistic locking is the alternative, but holding row locks across a user's
+think-time does not scale and invites deadlocks.
+
+**Q: Why not return the JPA entity from the controller?**
+It couples the API to the schema, drags lazy associations into serialisation
+(N+1 queries, or `LazyInitializationException` with open-in-view off), and lets
+a client set fields it must never control. Here it would also have meant one
+shape for every audience — no way to give residents a view without contact
+numbers.
+
+**Q: Why `readOnly = true` on reads?**
+Hibernate skips dirty-checking the loaded entities, and the driver can flag the
+transaction as read-only. Cheaper, and it documents intent.
+
+**Q: Why Testcontainers rather than an in-memory database?**
+Because the tests are only evidence if they run against what production runs.
+This schema uses `gen_random_uuid()`, the `~` regex operator and `TIMESTAMPTZ`;
+H2 has none of them. And the enum bug in entry 005 was caught by a Postgres
+CHECK constraint that H2 would not have enforced.
+
+### Test coverage now in place
+
+| Suite | Tests | Pins |
+|---|---|---|
+| `AuthFlowIntegrationTest` | 13 | 401 vs 403, forged JWT, role encoding, 404/400/405, OTP single-use, cooldown, auto-provisioning |
+| `FlatApiIntegrationTest` | 15 | PII boundary, per-role write permissions, validation, optimistic locking, soft delete |
+
+All 28 run against one Postgres container in about 25 seconds.
+
+### Your turn
+
+1. Read `FlatService.update()` and answer: why is the explicit version check
+   *not* sufficient on its own? Then delete it, run the tests, and see which
+   ones still pass. (Some will — that is the point.)
+2. Break the PII boundary deliberately: add `ownerContact` to `FlatSummary` and
+   run the tests. `directoryHidesContactDetails` should fail. Confirm it does,
+   then revert.
+3. **Exercise — the next slice is yours.** Build the same shape for `Notice`
+   (see `V1__initial_schema.sql`): `NoticeDtos`, `NoticeService`,
+   `NoticeController`, `NoticeRepository`, plus a `NoticeApiIntegrationTest`.
+   The rules differ in an instructive way — residents may *read* notices but
+   only `Role.COMMS` may write them, and a notice has a publish date, so a
+   draft must not appear in the resident list. Copy the structure, not the
+   rules.
+4. When you get stuck, re-read `FlatService` rather than asking for the answer.
+   Every decision in it is commented with its reasoning; the Notice slice needs
+   the same decisions made again, differently.
+
+---
+
 ## Next up
 
-- [ ] Entry 005 — Flat domain, the reference CRUD slice (Claude builds)
-- [ ] Entry 006 — Maintenance bills: optimistic locking, bulk generation,
-      `@Scheduled` overdue job (Claude builds)
-- [ ] Entry 007 — The remaining 9 domains (**you build**, scaffolds + failing
-      tests provided)
-- [ ] Entry 008 — File uploads (the `photo_url` fields base44 never implemented)
-- [ ] Entry 009 — Docker + Caddy + VPS deployment
+- [ ] Entry 007 — Maintenance bills: optimistic locking on concurrent "mark
+      paid", bulk generation, `@Scheduled` overdue job (Claude builds)
+- [ ] Entry 008 — The remaining 9 domains (**you build** — start with the
+      Notice slice in entry 006's "Your turn")
+- [ ] Entry 009 — File uploads (the `photo_url` fields base44 never implemented)
+- [ ] Entry 010 — Docker + Caddy + VPS deployment
