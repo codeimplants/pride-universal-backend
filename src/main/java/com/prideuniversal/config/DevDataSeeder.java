@@ -4,6 +4,8 @@ import com.prideuniversal.common.Role;
 import com.prideuniversal.domain.flat.Flat;
 import com.prideuniversal.domain.flat.FlatRepository;
 import com.prideuniversal.domain.user.User;
+import com.prideuniversal.domain.settings.WingSettings;
+import com.prideuniversal.domain.settings.WingSettingsRepository;
 import com.prideuniversal.domain.user.UserRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,6 +15,7 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 /**
@@ -34,19 +37,26 @@ public class DevDataSeeder implements CommandLineRunner {
 
     private final FlatRepository flatRepository;
     private final UserRepository userRepository;
+    private final WingSettingsRepository wingSettingsRepository;
     private final String adminMobile;
 
     public DevDataSeeder(FlatRepository flatRepository,
                          UserRepository userRepository,
+                         WingSettingsRepository wingSettingsRepository,
                          @Value("${app.dev.admin-mobile:9850929698}") String adminMobile) {
         this.flatRepository = flatRepository;
         this.userRepository = userRepository;
+        this.wingSettingsRepository = wingSettingsRepository;
         this.adminMobile = adminMobile;
     }
 
     @Override
     @Transactional
     public void run(String... args) {
+        // Checked per wing and before the flats guard below, so a database
+        // seeded before billing existed still gets its settings rows.
+        seedWingSettings();
+
         if (flatRepository.count() > 0) {
             log.info("Dev data already present, skipping seed.");
             return;
@@ -89,6 +99,28 @@ public class DevDataSeeder implements CommandLineRunner {
                   printed in this console.
                 ===================================================
                 """, flats.size(), adminMobile);
+    }
+
+    /**
+     * Billing rates per wing. Without these, bill generation refuses to run -
+     * deliberately, since billing everyone zero would look like success.
+     */
+    private void seedWingSettings() {
+        for (String wing : List.of("A", "B")) {
+            if (wingSettingsRepository.existsByWing(wing)) {
+                continue;
+            }
+            WingSettings settings = new WingSettings();
+            settings.setWing(wing);
+            settings.setMonthlyMaintenance(new BigDecimal("2000.00"));
+            settings.setSinkingFundAmount(new BigDecimal("500.00"));
+            settings.setWaterCharges(new BigDecimal("250.00"));
+            settings.setLateFee(new BigDecimal("100.00"));
+            settings.setMaintenanceDueDay(10);
+            settings.setSocietyName("Pride Universal Co-operative Housing Society");
+            wingSettingsRepository.save(settings);
+            log.info("Seeded billing settings for wing {}", wing);
+        }
     }
 
     private Flat flat(String wing, String number, int floor, String owner, String ownerContact,

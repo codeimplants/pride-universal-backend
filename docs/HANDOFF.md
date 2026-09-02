@@ -1,6 +1,6 @@
 # Session Handoff
 
-**Last updated:** 2026-09-02 (session 2 — first run, first tests, Flat slice)
+**Last updated:** 2026-09-02 (session 2 — first run, tests, Flat + billing)
 **Purpose:** Everything a fresh session needs to continue without re-deriving context.
 
 ---
@@ -78,7 +78,7 @@ below was executed, not reasoned about.
 | App startup (`dev` profile) | ✅ Starts, seeds 8 flats + admin |
 | Auth flow | ✅ Exercised end-to-end — see the table in LEARNING-LOG entry 005 |
 | Privilege escalation (forged JWT) | ✅ Rejected with 401 |
-| Tests | ✅ **28 integration tests, all passing** (Testcontainers + Postgres 16) |
+| Tests | ✅ **45 integration tests, all passing** (Testcontainers + Postgres 16) |
 | Git/GitHub | ✅ Both repos pushed |
 
 **Zero compile errors on the first build** (the previous handoff predicted
@@ -86,11 +86,10 @@ below was executed, not reasoned about.
 [`LEARNING-LOG.md`](LEARNING-LOG.md) entry 005 for why that is the interesting
 part.
 
-Test suites: `AuthFlowIntegrationTest` (13) and `FlatApiIntegrationTest` (15).
-Run them with `.\mvnw.cmd -B test` — they need the Docker daemon, not
-`docker compose up`, since Testcontainers starts its own Postgres.
-
-> ⚠️ Nothing from this session is **committed** yet. See §8 for the file list.
+Test suites: `AuthFlowIntegrationTest` (13), `FlatApiIntegrationTest` (15),
+`MaintenanceBillApiIntegrationTest` (17). Run them with `.\mvnw.cmd -B test`
+— they need the Docker daemon, not `docker compose up`, since Testcontainers
+starts its own Postgres. The whole suite takes about 30 seconds.
 
 ---
 
@@ -268,11 +267,16 @@ behind each.
 - **Auth** — `JwtService`, `JwtAuthFilter`, `OtpService`, `OtpAttemptRecorder`,
   `TokenService`, `AuthController`, DTOs.
 - **SMS** — `SmsSender` interface, `ConsoleSmsSender`, `Msg91SmsSender`.
-- **Domain** — `User` entity + repository; **`Flat` is now a complete CRUD
-  slice** (`FlatDtos`, `FlatService`, `FlatController`) and is the pattern the
-  remaining 10 domains should copy — see entry 006.
-- **Tests** — `AbstractIntegrationTest` (singleton Testcontainers Postgres),
-  `AuthFlowIntegrationTest`, `FlatApiIntegrationTest`. 28 tests.
+- **Domain** — `User` entity + repository; **`Flat` is a complete CRUD slice**
+  (`FlatDtos`, `FlatService`, `FlatController`) and is the pattern the
+  remaining domains should copy — see entry 006.
+- **Billing** — `MaintenanceBill` + `WingSettings` entities, `BillStatus` /
+  `PaymentMode` enums with converters, `MaintenanceBillService`
+  (idempotent generation, concurrent-safe mark-paid, overdue sweep),
+  `MaintenanceBillController`, `OverdueBillJob` (`@Scheduled`, 02:30 IST),
+  `WingSettingsService` (the one cached thing) — see entry 007.
+- **Tests** — `AbstractIntegrationTest` (singleton Testcontainers Postgres)
+  plus three suites. 45 tests.
 
 ### Three things worth understanding in the auth code
 
@@ -326,22 +330,20 @@ Found while building the Flat slice (entry 006):
   moved past and got an inescapable 409. Fixed with `saveAndFlush`. Caught by a
   test, not by hand; a single update looks fine.
 
-Uncommitted work (nothing from session 2 is committed):
+Found while building billing (entry 007):
 
-```
-new:      src/main/java/com/prideuniversal/common/RoleConverter.java
-          src/main/java/com/prideuniversal/config/SecurityErrorResponder.java
-          src/main/java/com/prideuniversal/domain/flat/FlatService.java
-          src/main/java/com/prideuniversal/domain/flat/FlatController.java
-          src/main/java/com/prideuniversal/domain/flat/dto/FlatDtos.java
-          src/test/java/com/prideuniversal/AbstractIntegrationTest.java
-          src/test/java/com/prideuniversal/auth/AuthFlowIntegrationTest.java
-          src/test/java/com/prideuniversal/domain/flat/FlatApiIntegrationTest.java
-          .mvn/settings.xml, .mvn/maven.config
-modified: src/main/java/com/prideuniversal/domain/user/User.java
-          src/main/java/com/prideuniversal/config/SecurityConfig.java
-          src/main/java/com/prideuniversal/common/GlobalExceptionHandler.java
-          pom.xml, docs/HANDOFF.md, docs/LEARNING-LOG.md
+- **Every flat would have been billed ₹0.** `WingSettingsService` refused a
+  wing with no settings row — but `V1__initial_schema.sql` line 171 seeds a row
+  per wing with every amount defaulted to zero, so the row always exists and
+  the guard never fired. Now checks the *value*, not the row. Caught by three
+  failing tests.
+
+All of session 2's work is committed on the branch
+**`feat/flat-slice-and-tests`** (three commits, branched from `main` at
+`35ce6be`). Nothing has been pushed. To put it on `main`:
+
+```powershell
+git checkout main; git merge --ff-only feat/flat-slice-and-tests
 ```
 
 ---
@@ -350,11 +352,10 @@ modified: src/main/java/com/prideuniversal/domain/user/User.java
 
 - [x] **Entry 005** — First run: three bugs the compiler could not catch *(done)*
 - [x] **Entry 006** — Flat CRUD reference slice + first 28 tests *(done)*
-- [ ] **Entry 007** — Maintenance bills: optimistic locking on concurrent "mark
-      paid", bulk generation, `@Scheduled` overdue job *(Claude builds)*
-      — **next**
-- [ ] **Entry 008** — Remaining 9 domains *(**user builds** — start with the
-      Notice slice set as the exercise at the end of entry 006)*
+- [x] **Entry 007** — Maintenance bills: generation, payment, overdue job *(done)*
+- [ ] **Entry 008** — Remaining 9 domains *(**user builds** — **next**; start
+      with the Notice slice set as the exercise at the end of entry 006,
+      then waiving bills from entry 007)*
 - [ ] **Entry 009** — File uploads (`photo_url` / `attachment_url` /
       `receipt_url` — base44 never implemented these despite the schema fields)
 - [ ] **Entry 010** — Docker + Caddy + VPS deployment
@@ -363,7 +364,13 @@ modified: src/main/java/com/prideuniversal/domain/user/User.java
 **The user's next hands-on task** is the Notice slice (entry 006, "Your turn"
 step 3) — same shape as Flat, deliberately different rules: residents read,
 only `Role.COMMS` writes, and unpublished drafts must not appear in the
-resident list.
+resident list. Entry 007's exercise (waiving a bill) is the follow-up.
+
+**Not yet built, and needed before billing is usable:** there is no endpoint to
+*edit* wing settings. The amounts can only be set by SQL or the dev seeder, and
+bill generation refuses to run until they are non-zero. A `/api/settings` slice
+is the natural companion to entry 007 — note `SecurityConfig` already reserves
+`/api/settings/**` for admin and chairman.
 
 ### Deferred / open
 

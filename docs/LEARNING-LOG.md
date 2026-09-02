@@ -658,11 +658,212 @@ All 28 run against one Postgres container in about 25 seconds.
 
 ---
 
+## Entry 007 — Maintenance bills: doing money operations twice
+
+**Files:** [`MaintenanceBill.java`](../src/main/java/com/prideuniversal/domain/bill/MaintenanceBill.java),
+[`MaintenanceBillService.java`](../src/main/java/com/prideuniversal/domain/bill/MaintenanceBillService.java),
+[`MaintenanceBillController.java`](../src/main/java/com/prideuniversal/domain/bill/MaintenanceBillController.java),
+[`OverdueBillJob.java`](../src/main/java/com/prideuniversal/domain/bill/OverdueBillJob.java),
+[`WingSettingsService.java`](../src/main/java/com/prideuniversal/domain/settings/WingSettingsService.java),
+[`BillDtos.java`](../src/main/java/com/prideuniversal/domain/bill/dto/BillDtos.java),
+[`MaintenanceBillApiIntegrationTest.java`](../src/test/java/com/prideuniversal/domain/bill/MaintenanceBillApiIntegrationTest.java)
+
+### What it solves
+
+Billing is where the application touches money, and the operations are exactly
+the ones people repeat: the "generate bills" button gets double-clicked, two
+treasurers record the same cash payment, the nightly job fires twice after a
+restart. **Every operation in this entry is designed to be run twice.**
+
+That is the theme worth taking away. "It works" is easy. "It works when it
+happens twice, out of order, from two browsers" is the actual requirement for
+anything financial.
+
+45 tests now pass, 17 of them new.
+
+### Idempotent generation, in three layers
+
+`POST /api/bills/generate` for a period:
+
+1. **Read which flats are already billed and skip them.** A second run creates
+   nothing and reports `skipped: 8` instead of failing. Pressing the button
+   twice is normal user behaviour, not an error condition.
+2. **One transaction for the run**, so a failure halfway leaves no
+   half-generated month.
+3. **`uq_bill_flat_period` in the database.** If two admins click
+   simultaneously, both pass step 1 — the check and the insert are not atomic
+   together — and the loser's whole transaction is rejected by the unique
+   index.
+
+Only layer 3 is a guarantee. Layers 1 and 2 exist to make the common case
+pleasant. That ordering — *make the database enforce it, then make the
+application explain it* — recurs throughout this entry.
+
+### Payment: three guards, one guarantee
+
+Two committee members open the same unpaid bill and both click "mark paid" for
+the same cash handover. Unguarded, the second write wins and the society has
+one payment recorded under two receipt numbers.
+
+| Guard | Catches | Is it a guarantee? |
+|---|---|---|
+| already-paid status check | a second attempt minutes later | no |
+| explicit `version` comparison | a stale screen | no |
+| `@Version` column at flush | a genuine simultaneous race | **yes** |
+
+The first two exist so the common cases produce a sentence a human can read
+("already marked paid on 2026-08-14, receipt RCPT-...") rather than a bare
+409. The last is the one that actually holds. The test asserts the original
+receipt number and payment mode survive the losing write — it is not enough
+that the second request fails, the first one's data has to be intact.
+
+### The overdue sweep: idempotent by state machine
+
+The nightly job moves bills past their due date to `overdue` and applies the
+wing's late fee. The subtle part is the query:
+
+```java
+findByStatusAndDueDateBefore(BillStatus.PENDING, asOf)   // not "due date has passed"
+```
+
+Only `PENDING -> OVERDUE`. A bill that is already overdue is never picked up
+again, so running the job twice in one day, or catching up after a week of
+downtime, cannot charge the late fee twice. **A query on "due date has passed"
+alone would compound the fee nightly** — and it would look correct in a demo,
+because the first run is right.
+
+Two more things in `OverdueBillJob` worth copying:
+
+- The cron carries an explicit `zone = "Asia/Kolkata"`. Without one it silently
+  follows the server default, which is how a job scheduled for "overnight" ends
+  up running at lunchtime after the VPS is rebuilt.
+- The job catches and logs its own exceptions. An uncaught exception in a
+  scheduled method kills nothing loudly — it just does not run — and because
+  the sweep is idempotent, retrying tomorrow costs nothing.
+
+### Bug 5 — "The row exists" is not "a value is configured"
+
+Three tests failed on the first run with `expected: 2750.00 but was: 0.00`.
+
+`WingSettingsService.ratesFor` threw a clear error when a wing had **no
+settings row** — which felt like enough. It is not:
+`V1__initial_schema.sql` line 171 seeds a row per wing with every amount
+defaulted to zero, so the committee has something to edit rather than
+something to create. The row always exists.
+
+So the guard never fired, and generation would have raised a bill for **zero
+rupees against every flat and reported success** — precisely the failure the
+guard was written to prevent. Fixed by checking the value, not the row's
+existence:
+
+```java
+if (settings.monthlyTotal().signum() <= 0) { throw ApiException.badRequest(...); }
+```
+
+The general lesson: a null check and a meaningfulness check are different
+checks. Defaults that exist to be edited will silently pass the first one.
+
+### Denormalisation, on purpose
+
+`MaintenanceBill` copies `wing`, `flat_number` and `owner_name` from the flat
+even though it also has a foreign key to it. That looks like a normalisation
+mistake and is not.
+
+**A bill is a financial record of a moment.** If a flat is sold in March, the
+January bill must still show who owed the money in January. Joining to the flat
+would silently rewrite history every time the register is edited.
+
+> Normalise data you want to stay current. Denormalise data you want to stay
+> true.
+
+### Two smaller traps worth naming
+
+**Self-invocation, again.** `runOverdueSweep()` calls `applyOverdue()` on
+`this`, and a self-call does not pass through Spring's proxy — so
+`@Transactional` on the callee would have been ignored entirely. Declaring it
+on the entry point instead gives one transaction across the whole sweep. This
+is the same trap as `OtpAttemptRecorder` in entry 004, resolved the opposite
+way: there a *separate bean* was needed because a *different* transaction was
+required; here the outer annotation is right because one transaction is.
+
+**Reading a foreign key without waking the proxy.** The permission check on a
+bill needs the owning flat's id. `bill.getFlat().getId()` would initialise the
+lazy association — for every row of a list, an N+1 storm to compare a UUID. So
+the column is mapped twice: the association, and a read-only
+`@Column(name = "flat_id", insertable = false, updatable = false) UUID flatId`.
+Two *writable* mappings of one column is an error; one writable and one
+read-only is the idiom.
+
+### Caching a record, not an entity
+
+`wingSettings` is the one cached thing in this application, and `ratesFor`
+returns an immutable `BillingRates` record rather than the `WingSettings`
+entity.
+
+Caching a JPA entity hands the same managed instance to callers in different
+transactions, after the persistence context that loaded it has closed. It is
+detached: any lazy access throws, and one caller mutating it mutates it for
+everyone. A record has no identity, no session and nothing to initialise.
+
+Also note the cache is only correct because `evict` exists — the test's setup
+has to call it, or it reads back the zeros it just overwrote.
+
+### Interview questions this maps to
+
+**Q: What does idempotent mean, and how did you make an endpoint idempotent?**
+Running it twice has the same effect as running it once. Generation checks
+what already exists and reports it as skipped, with a unique constraint as the
+real guarantee. The overdue sweep is idempotent through its state transition:
+it only moves `pending -> overdue`, so it cannot apply a late fee twice.
+
+**Q: Optimistic vs pessimistic locking?**
+Optimistic assumes conflicts are rare: read a version, send it back, fail the
+write if it moved. Pessimistic takes a row lock up front. For a committee
+member with a form open for two minutes, pessimistic would hold a lock across
+human think-time — that does not scale and invites deadlocks. Optimistic costs
+nothing until there is an actual conflict.
+
+**Q: Why is your check-then-act not enough?**
+Because two requests can both pass the check before either writes. The check
+is for user experience; the database constraint or version column is the
+correctness guarantee.
+
+**Q: What breaks if you run two instances of this app?**
+Spring's scheduler is per-JVM, so both would run the nightly sweep. The
+idempotent transition limits the damage but does not prevent duplicated work;
+it needs a lock (ShedLock, or a Postgres advisory lock). The Caffeine cache is
+also per-process, so each node would hold its own copy of wing settings.
+
+**Q: When would you denormalise?**
+When the value must not change retroactively. A bill's owner name is a record
+of who owed money at the time, not a pointer to who owns the flat now.
+
+### Your turn
+
+1. Break the sweep's idempotency deliberately: change
+   `findByStatusAndDueDateBefore(PENDING, asOf)` to search both `PENDING` and
+   `OVERDUE`. Predict which test fails before running it.
+2. In `markPaid`, delete the already-paid check but keep the version
+   comparison. Does `markPaidTwiceIsConflict` still pass? Work out why the
+   answer is yes, and what the user-visible difference is.
+3. **Exercise — waiving a bill.** The schema already allows
+   `status = 'waived'` but nothing sets it. Add `POST /api/bills/{id}/waive`:
+   admin or chairman only, requires a `version` and a mandatory `reason`
+   written to `notes`, refuses a bill that is already paid, and must leave the
+   bill out of the overdue sweep. Write the tests first — including one that
+   proves a waived bill is never marked overdue.
+4. **Harder — receipt numbers.** The generated numbers are unique but not
+   sequential, and an audit usually wants a gapless series. Work out why
+   `max(receipt_number) + 1` is wrong under concurrency, then look up Postgres
+   sequences and explain why a sequence still will not give you a gapless
+   series when transactions roll back.
+
+---
+
 ## Next up
 
-- [ ] Entry 007 — Maintenance bills: optimistic locking on concurrent "mark
-      paid", bulk generation, `@Scheduled` overdue job (Claude builds)
 - [ ] Entry 008 — The remaining 9 domains (**you build** — start with the
-      Notice slice in entry 006's "Your turn")
+      Notice slice in entry 006's "Your turn", then waiving bills from
+      entry 007's)
 - [ ] Entry 009 — File uploads (the `photo_url` fields base44 never implemented)
 - [ ] Entry 010 — Docker + Caddy + VPS deployment
