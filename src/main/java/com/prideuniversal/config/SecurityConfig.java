@@ -32,10 +32,14 @@ public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
     private final AppProperties props;
+    private final SecurityErrorResponder errorResponder;
 
-    public SecurityConfig(JwtAuthFilter jwtAuthFilter, AppProperties props) {
+    public SecurityConfig(JwtAuthFilter jwtAuthFilter,
+                          AppProperties props,
+                          SecurityErrorResponder errorResponder) {
         this.jwtAuthFilter = jwtAuthFilter;
         this.props = props;
+        this.errorResponder = errorResponder;
     }
 
     @Bean
@@ -70,6 +74,13 @@ public class SecurityConfig {
                 // --- Everything else needs a valid token ---
                 .anyRequest().authenticated()
             )
+            // Without this, a request with no token gets a bare 403. Spring
+            // Security fails requests inside the filter chain, so
+            // GlobalExceptionHandler never sees them - these two collaborators
+            // are what turn them into 401/403 with a normal ApiError body.
+            .exceptionHandling(ex -> ex
+                .authenticationEntryPoint(errorResponder)
+                .accessDeniedHandler(errorResponder))
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();

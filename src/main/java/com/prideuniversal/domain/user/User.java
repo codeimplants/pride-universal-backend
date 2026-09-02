@@ -5,8 +5,6 @@ import com.prideuniversal.common.Role;
 import com.prideuniversal.domain.flat.Flat;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
@@ -39,11 +37,14 @@ public class User extends BaseEntity {
     private String email;
 
     /**
-     * Stored as the lowercase code ('admin', 'resident', ...) via the enum's
-     * own mapping, not as an ordinal. Ordinals are a trap: reordering the enum
-     * silently reassigns everyone's role.
+     * Stored as the lowercase code ('admin', 'resident', ...) by
+     * {@link com.prideuniversal.common.RoleConverter}, which is auto-applied.
+     *
+     * <p>Deliberately NOT {@code @Enumerated}: {@code ORDINAL} is a trap
+     * (reordering the enum silently reassigns everyone's role) and
+     * {@code STRING} writes the uppercase constant name, which the
+     * {@code ck_user_role} CHECK constraint rejects.
      */
-    @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 32)
     private Role role = Role.RESIDENT;
 

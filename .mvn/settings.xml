@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Project-local Maven settings.
+
+  Why this file exists: the machine-wide ~/.m2/settings.xml on some dev
+  machines is a corporate one that mirrors <mirrorOf>central</mirrorOf> to an
+  internal, VPN-only Nexus. With that active, every dependency in this project
+  fails to resolve. This file pins resolution to Maven Central and uses its own
+  local repository so the corporate cache is neither read from nor written to.
+
+  It is applied automatically by .mvn/maven.config, so plain `./mvnw` works.
+-->
+<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0
+                              https://maven.apache.org/xsd/settings-1.0.0.xsd">
+
+  <localRepository>${user.home}/.m2/repository-oss</localRepository>
+
+  <profiles>
+    <profile>
+      <id>central-only</id>
+      <repositories>
+        <repository>
+          <id>central</id>
+          <url>https://repo.maven.apache.org/maven2</url>
+          <releases><enabled>true</enabled></releases>
+          <snapshots><enabled>false</enabled></snapshots>
+        </repository>
+      </repositories>
+      <pluginRepositories>
+        <pluginRepository>
+          <id>central</id>
+          <url>https://repo.maven.apache.org/maven2</url>
+          <releases><enabled>true</enabled></releases>
+          <snapshots><enabled>false</enabled></snapshots>
+        </pluginRepository>
+      </pluginRepositories>
+    </profile>
+  </profiles>
+
+  <activeProfiles>
+    <activeProfile>central-only</activeProfile>
+  </activeProfiles>
+</settings>
