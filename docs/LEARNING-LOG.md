@@ -763,6 +763,18 @@ if (settings.monthlyTotal().signum() <= 0) { throw ApiException.badRequest(...);
 The general lesson: a null check and a meaningfulness check are different
 checks. Defaults that exist to be edited will silently pass the first one.
 
+**And then the same mistake again, three files away.** `DevDataSeeder` used
+`existsByWing(...)` to decide whether to seed billing amounts — so on the dev
+database it saw the migration's placeholder rows, concluded its work was done,
+and left every amount at zero. The service correctly refused to generate, which
+is how it surfaced: not from a test, but from running the real app over HTTP
+after the suite was green.
+
+Two things worth taking from that. Once you learn a bug's shape, grep for the
+shape rather than fixing the instance you found. And a passing test suite is
+not the same as a working application — the tests set up their own data, so
+they never exercised the seeder at all.
+
 ### Denormalisation, on purpose
 
 `MaintenanceBill` copies `wing`, `flat_number` and `owner_name` from the flat

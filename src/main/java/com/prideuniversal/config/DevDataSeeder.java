@@ -104,14 +104,23 @@ public class DevDataSeeder implements CommandLineRunner {
     /**
      * Billing rates per wing. Without these, bill generation refuses to run -
      * deliberately, since billing everyone zero would look like success.
+     *
+     * <p>Note this configures the EXISTING rows rather than creating them.
+     * V1__initial_schema.sql already inserts one wing_settings row per wing
+     * with every amount defaulted to zero, so an "exists?" check would always
+     * be true and this would never set an amount.
      */
     private void seedWingSettings() {
         for (String wing : List.of("A", "B")) {
-            if (wingSettingsRepository.existsByWing(wing)) {
-                continue;
+            WingSettings settings = wingSettingsRepository.findByWing(wing)
+                    .orElseGet(() -> {
+                        WingSettings created = new WingSettings();
+                        created.setWing(wing);
+                        return created;
+                    });
+            if (settings.monthlyTotal().signum() > 0) {
+                continue;               // a real amount is already configured
             }
-            WingSettings settings = new WingSettings();
-            settings.setWing(wing);
             settings.setMonthlyMaintenance(new BigDecimal("2000.00"));
             settings.setSinkingFundAmount(new BigDecimal("500.00"));
             settings.setWaterCharges(new BigDecimal("250.00"));
