@@ -3,6 +3,7 @@ package com.prideuniversal.config;
 import com.prideuniversal.auth.JwtAuthFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -10,6 +11,7 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.access.intercept.AuthorizationFilter;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
@@ -42,7 +44,29 @@ public class SecurityConfig {
         this.errorResponder = errorResponder;
     }
 
+    /**
+     * Nexus, server to server: on {@code /api/admin/**} its service token is the only
+     * credential, and a user's JWT, even an admin's, is not accepted. nginx also closes
+     * the path to the internet; Nexus calls the container over loopback.
+     */
     @Bean
+    @Order(1)
+    public SecurityFilterChain adminConsoleChain(HttpSecurity http) throws Exception {
+        http
+            .securityMatcher("/api/admin/**")
+            .csrf(csrf -> csrf.disable())
+            .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            .authorizeHttpRequests(auth -> auth.anyRequest().hasAuthority(ServiceTokenFilter.AUTHORITY))
+            .exceptionHandling(ex -> ex
+                .authenticationEntryPoint(errorResponder)
+                .accessDeniedHandler(errorResponder))
+            .addFilterBefore(new ServiceTokenFilter(props.admin() == null ? null : props.admin().serviceToken()),
+                    AuthorizationFilter.class);
+        return http.build();
+    }
+
+    @Bean
+    @Order(2)
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
             // No server-side session, so there is no session to fixate and no

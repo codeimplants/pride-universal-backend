@@ -19,8 +19,12 @@ public record AppProperties(
         Otp otp,
         Sms sms,
         Storage storage,
-        Cors cors
+        Cors cors,
+        Admin admin
 ) {
+
+    /** Nexus (the Code Implants admin console) authenticates with this on /api/admin/**. */
+    public record Admin(String serviceToken) {}
 
     public record Jwt(
             String secret,

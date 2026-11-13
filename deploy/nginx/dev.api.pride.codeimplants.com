@@ -20,4 +20,8 @@ server {
     location /actuator/ {
         return 404;
     }
+    # Nexus calls the admin API over loopback (127.0.0.1); it is never public.
+    location /api/admin/ {
+        return 404;
+    }
 }

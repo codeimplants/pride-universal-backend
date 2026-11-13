@@ -90,6 +90,8 @@ write_env() {
     [[ "$sms" == fixed ]] && echo "MESSAGING_FIXED_CODE=123456"
     echo "OTP_DEV_MODE=false"
     echo "CORS_ORIGINS=$cors"
+    # Nexus's credential for /api/admin/** (scripts/connect-nexus.sh hands it to Nexus; never printed).
+    echo "ADMIN_SERVICE_TOKEN=$(openssl rand -hex 32)"
     echo "STORAGE_PROVIDER=local"
     echo "STORAGE_PATH=/app/uploads"
   } > "$file"
@@ -127,6 +129,5 @@ docker pull -q "$JRE_IMAGE" >/dev/null
 say "done. Containers:"
 docker ps --filter name=pride --format '  {{.Names}}\t{{.Status}}'
 echo
-echo "Next: connect each environment to Code Implants Messaging (on this server):"
-echo "  bash ~/messaging/dev/scripts/connect-app.sh pride-universal $HOME_DIR/dev.env --ips 172.16.0.0/12,31.97.61.191/32"
-echo "  bash ~/messaging/prod/scripts/connect-app.sh pride-universal $HOME_DIR/prod.env --ips 172.16.0.0/12,31.97.61.191/32"
+echo "Next (deploy/README.md): connect each environment to Code Implants Messaging, deploy it, then"
+echo "register it in Nexus with: bash $HOME_DIR/connect-nexus.sh <dev|prod>"

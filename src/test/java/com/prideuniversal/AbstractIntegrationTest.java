@@ -56,9 +56,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * comes from each test allocating its own fixtures instead, which also keeps
  * the OTP rate limiters (per mobile number) out of each other's way.
  */
-@SpringBootTest(properties = "app.otp.dev-mode=true")
+@SpringBootTest(properties = {"app.otp.dev-mode=true", "app.admin.service-token=" + AbstractIntegrationTest.CONSOLE_TOKEN})
 @AutoConfigureMockMvc
 public abstract class AbstractIntegrationTest {
+
+    /** Nexus's service token in tests. */
+    protected static final String CONSOLE_TOKEN = "test-console-token-0123456789";
 
     // Non-generic in Testcontainers 2.x - the old self-referential
     // PostgreSQLContainer<SELF> generic was dropped, so no <?> here.

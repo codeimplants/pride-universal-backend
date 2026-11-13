@@ -110,7 +110,8 @@ class MessagingSmsSenderTest {
                 new AppProperties.Sms("messaging",
                         new AppProperties.Sms.Messaging("https://dev.msg.example/", key, fixed)),
                 null,
-                new AppProperties.Cors(List.of()));
+                new AppProperties.Cors(List.of()),
+                new AppProperties.Admin(null));
         return new MessagingSmsSender(props, builder);
     }
 }

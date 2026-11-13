@@ -48,11 +48,14 @@ public class UserAdminService {
     private final UserRepository userRepository;
     private final FlatRepository flatRepository;
     private final TokenService tokenService;
+    private final AccountDeletion accountDeletion;
 
-    public UserAdminService(UserRepository userRepository, FlatRepository flatRepository, TokenService tokenService) {
+    public UserAdminService(UserRepository userRepository, FlatRepository flatRepository,
+                            TokenService tokenService, AccountDeletion accountDeletion) {
         this.userRepository = userRepository;
         this.flatRepository = flatRepository;
         this.tokenService = tokenService;
+        this.accountDeletion = accountDeletion;
     }
 
     // =====================================================================
@@ -137,21 +140,14 @@ public class UserAdminService {
     }
 
     /**
-     * Deletes the caller's account: the user row and its sessions. Records the
-     * society keeps (the flat register, bills, complaints) are the society's, and
-     * lose only the link to the account ({@code ON DELETE SET NULL}). A resident
-     * whose number is still on a flat can sign in again later as a new account.
+     * Deletes the caller's account (see {@link AccountDeletion}). A resident whose
+     * number is still on a flat can sign in again later, as a new account.
      */
     @Transactional
     public void deleteOwnAccount() {
-        AuthPrincipal caller = AuthPrincipal.current();
-        User u = userRepository.findById(caller.userId()).orElseThrow(() -> ApiException.notFound("User"));
-        if (u.getRole() == Role.ADMIN && u.isActive() && userRepository.countByRoleAndActiveTrue(Role.ADMIN) <= 1) {
-            throw ApiException.conflict("You are the only admin. Make someone else admin before deleting your account.");
-        }
-        tokenService.revokeAll(u);
-        userRepository.delete(u);
-        log.info("Account deleted at the owner's request: {}", Text.mask(u.getMobile()));
+        User u = userRepository.findById(AuthPrincipal.current().userId())
+                .orElseThrow(() -> ApiException.notFound("User"));
+        accountDeletion.delete(u, AccountDeletion.BY_SELF);
     }
 
     // =====================================================================
