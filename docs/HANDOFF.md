@@ -52,7 +52,7 @@ clean-slate rebuild.
 | Integration tests | ⚠️ ~95 written (45 old + new suites), **not run since session 2**: no Docker on this machine. The user is installing Docker Desktop. Run `.\mvnw.cmd -B test` before any prod deploy (deploy.sh enforces it) |
 | Dev environment | ✅ **Live on the VPS** (`pride-api-dev`, 127.0.0.1:8111). Migrations applied; a 27-step end-to-end smoke test passed (OTP via messaging dev, billing, helpdesk, notices, meetings, gate, ledger, vendors, marketplace, console) |
 | Messaging | ✅ dev: app `pride-universal` in messaging dev, key in `~/pride/dev.env`. prod: not yet |
-| Nexus | ✅ Pride dev registered in Nexus dev + preprod (`com.prideuniversal.app`, federation at `http://127.0.0.1:8111/api/admin`). Server-tab inventory entry committed in nexus-backend **locally, not pushed** (`8f67fae`). Prod: not yet |
+| Nexus | ✅ Pride dev registered in Nexus dev + preprod (`com.prideuniversal.app`, federation at `http://127.0.0.1:8111/api/admin`). Server-tab inventory entry `8f67fae` pushed and deployed to Nexus dev + prod. Nexus **preprod is intentionally disconnected**. Prod registration: not yet |
 | DNS / nginx | ❌ Waiting on the user: A records for `api.pride` / `dev.api.pride.codeimplants.com`, then `sudo bash ~/pride/install-nginx.sh` |
 | Prod | ❌ Not deployed. Needs: passing tests, messaging prod connect, DNS + nginx, first admin, Nexus prod registration |
 | App | ❌ Not started |
@@ -107,11 +107,10 @@ backup 02:55 to `~/backups/pride`. Ports 8110 prod / 8111 dev. nginx closes `/ac
 ## 7. Next steps
 
 1. **User:** DNS A records → `sudo bash ~/pride/install-nginx.sh`. Install Docker Desktop.
-2. **Ask the user:** push + deploy the nexus-backend inventory commit.
-3. Run the full test suite once Docker exists; fix whatever it finds.
-4. **Build the app** (Expo, `codeimplants/pride-universal`): port every Base44 screen; version control +
+2. Run the full test suite once Docker exists; fix whatever it finds.
+3. **Build the app** (Expo, `codeimplants/pride-universal`): port every Base44 screen; version control +
    analytics through Nexus (the dev SDK key is on the App row in Nexus dev; identify users by their Pride user id).
-5. Prod go-live (ask first): messaging prod connect, `deploy.sh --env prod`, first admin row, Nexus prod
+4. Prod go-live (ask first): messaging prod connect, `deploy.sh --env prod`, first admin row, Nexus prod
    registration, Firebase Hosting for web, Play upload key → AAB to the existing listing, iOS (needs an Apple
    Developer account).
 
