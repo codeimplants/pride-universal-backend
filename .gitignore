@@ -28,3 +28,6 @@ uploads/
 # OS
 .DS_Store
 Thumbs.db
+
+# Local deploy settings (copy of deploy.config.example.sh)
+scripts/deploy.config.sh
