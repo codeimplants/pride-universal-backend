@@ -69,11 +69,15 @@ public class FlatService {
     /**
      * The full record, including contact numbers and vehicle registrations.
      *
-     * <p>Committee members see any flat; a resident sees only their own. Note
-     * the 403 is raised <em>after</em> the lookup rather than by filtering the
-     * query, so a resident probing for valid ids cannot tell "does not exist"
-     * apart from "not yours" — both are refusals, but only one of them would
-     * confirm that a flat id is real.
+     * <p>Committee members see any flat; a resident sees only their own.
+     *
+     * <p>Note that a resident asking for someone else's flat gets a 403, and
+     * an unknown id gets a 404 — so the 403 <em>does</em> confirm the flat
+     * exists. That is acceptable here only because a flat's existence is not
+     * a secret: {@link #directory} hands every resident every flat's id
+     * anyway, and a 403 tells an honest client exactly what went wrong.
+     * Where existence itself is the thing being protected, the answer is a
+     * 404 for both cases instead — see {@code NoticeService.get()}.
      */
     @Transactional(readOnly = true)
     public FlatDetail detail(UUID id) {

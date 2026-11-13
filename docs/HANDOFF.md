@@ -1,6 +1,6 @@
 # Session Handoff
 
-**Last updated:** 2026-09-02 (session 2 — first run, tests, Flat + billing)
+**Last updated:** 2026-11-14 (session 3 — new machine, Notice scaffold, Play Store status)
 **Purpose:** Everything a fresh session needs to continue without re-deriving context.
 
 ---
@@ -44,7 +44,8 @@ clean-slate rebuild, no migration or dual-run cutover needed.
 ## 2. Repository layout
 
 ```
-C:\RN\pride-universal\                     <- parent (plain folder, NOT a repo)
+D:\CI Projects\pride-universal\            <- parent (plain folder, NOT a repo)
+                                              (was C:\RN\pride-universal on the old machine)
 ├── pride-universal-frontend\              <- base44 app, being retired
 │   └── origin: github.com/codeimplants/pride-universal.git
 └── pride-universal-backend\               <- active work
@@ -54,12 +55,13 @@ C:\RN\pride-universal\                     <- parent (plain folder, NOT a repo)
 Two **separate** git repos, deliberately — independent CI and deploy cadence
 (backend → VPS, app → app stores).
 
-Both clean and pushed as of this handoff:
-- frontend `38e087c`, backend `f3f0858`, both `main` tracking origin.
+State as of session 3:
+- **backend** — `main` fast-forwarded to `a2c55b4` (sessions 2's three commits,
+  previously on `feat/flat-slice-and-tests`). **4 commits ahead of
+  `origin/main`, not pushed.** The session 3 Notice scaffold sits on top of it.
+- **frontend** — on local branch `chore/npm-allow-scripts` (`9206339`, 20 Oct,
+  one commit, never pushed); `main` = `origin/main` = `38e087c`.
 
-> Leftover: `C:\RN\restructure-pride-universal.ps1` — the restructure was done
-> manually instead. Safe to delete.
->
 > Optional: no `.code-workspace` exists. A multi-root one would give both repos
 > their own Source Control entry in one window.
 
@@ -78,8 +80,9 @@ below was executed, not reasoned about.
 | App startup (`dev` profile) | ✅ Starts, seeds 8 flats + admin |
 | Auth flow | ✅ Exercised end-to-end — see the table in LEARNING-LOG entry 005 |
 | Privilege escalation (forged JWT) | ✅ Rejected with 401 |
-| Tests | ✅ **45 integration tests, all passing** (Testcontainers + Postgres 16) |
-| Git/GitHub | ✅ Both repos pushed |
+| Tests | ✅ **45 integration tests, all passing** (Testcontainers + Postgres 16) — as of session 2, on the old machine |
+| Notice scaffold (session 3) | ⚠️ **Compiles; never run.** No Docker or Postgres on the current machine, so neither the 20 new tests nor Hibernate's `validate` of the new `Notice` mapping have executed. The mapping was checked against `V1__initial_schema.sql` by reading only. |
+| Git/GitHub | ⚠️ backend `main` 4 commits ahead of origin — see §2 |
 
 **Zero compile errors on the first build** (the previous handoff predicted
 2–5). All three bugs found were runtime/integration ones — see
@@ -94,6 +97,20 @@ starts its own Postgres. The whole suite takes about 30 seconds.
 ---
 
 ## 4. Environment setup — both original blockers cleared
+
+> ⚠️ **Session 3 moved to a different machine** (`D:\CI Projects\…`, Windows 11
+> Home). The rest of §4 and §10 describe the *old* one. Differences found:
+>
+> | | Old machine | Current machine |
+> |---|---|---|
+> | JDK | 8 default, use jdk-23 override | **Temurin 21 is `JAVA_HOME`** — no override needed |
+> | Docker | Rancher Desktop (moby) | **None.** `C:\Program Files\Docker` is empty (uninstalled ~31 Oct). **Tests cannot run until Docker Desktop or Rancher Desktop is installed.** |
+> | `~/.m2/settings.xml` | Corporate Nexus mirror | Absent. `.mvn/settings.xml` is harmless here; keep it for the old machine. |
+> | Port 8080 | Taken | Free |
+> | `gh` CLI | Not installed | 2.102 installed |
+> | Android SDK | — | Platforms 34–36, build-tools 36 — ready for Phase 2 |
+>
+> `.\mvnw.cmd -B test-compile` works as-is.
 
 Nothing needed installing. Resolutions, in the order they mattered:
 
@@ -229,6 +246,7 @@ are never self-assigned.
 | Repos | Two separate | Independent deploy cadence. |
 | Hosting | VPS + Docker Compose + Caddy | ~2 vCPU / 4GB. Budget ~400MB for the JVM. **Host in India** (DO Bangalore / AWS Mumbai / E2E) for latency and data residency. |
 | RN Web | Enabled, not gating | Ships nearly free with Expo Router; committee screens benefit from a big screen. Residents are on phones. |
+| Old Play Store app | **Not rebuilt** for API 36 (session 3) | Rebuilding it would re-ship the broken auth in §1. The RN app ships as an update to the same listing instead — see §11. Backend roadmap continues first. |
 
 ---
 
@@ -338,13 +356,16 @@ Found while building billing (entry 007):
   the guard never fired. Now checks the *value*, not the row. Caught by three
   failing tests.
 
-All of session 2's work is committed on the branch
-**`feat/flat-slice-and-tests`** (three commits, branched from `main` at
-`35ce6be`). Nothing has been pushed. To put it on `main`:
+Session 2's work (branch `feat/flat-slice-and-tests`) was fast-forwarded onto
+`main` in session 3. The branch is pushed to origin; `main` is not yet.
 
-```powershell
-git checkout main; git merge --ff-only feat/flat-slice-and-tests
-```
+Found in session 3, while writing the Notice brief:
+
+- **`FlatService.detail()`'s javadoc reasoned backwards.** It claimed the 403
+  stops a resident telling "does not exist" from "not yours" — but a 403
+  beside a 404 is exactly how they'd tell. The *behaviour* is right (a flat's
+  existence isn't secret; the directory lists every id); the comment now says
+  so, and contrasts the Notice case, where a hidden draft must be a 404.
 
 ---
 
@@ -353,18 +374,29 @@ git checkout main; git merge --ff-only feat/flat-slice-and-tests
 - [x] **Entry 005** — First run: three bugs the compiler could not catch *(done)*
 - [x] **Entry 006** — Flat CRUD reference slice + first 28 tests *(done)*
 - [x] **Entry 007** — Maintenance bills: generation, payment, overdue job *(done)*
-- [ ] **Entry 008** — Remaining 9 domains *(**user builds** — **next**; start
-      with the Notice slice set as the exercise at the end of entry 006,
-      then waiving bills from entry 007)*
+- [ ] **Entry 008** — Notices *(**user builds** — **in progress**; scaffold +
+      20 failing tests + brief written in session 3)*, then waiving bills
+      (entry 007's exercise), then the remaining 8 domains
 - [ ] **Entry 009** — File uploads (`photo_url` / `attachment_url` /
       `receipt_url` — base44 never implemented these despite the schema fields)
 - [ ] **Entry 010** — Docker + Caddy + VPS deployment
 - [ ] **Phase 2** — React Native rewrite
 
-**The user's next hands-on task** is the Notice slice (entry 006, "Your turn"
-step 3) — same shape as Flat, deliberately different rules: residents read,
-only `Role.COMMS` writes, and unpublished drafts must not appear in the
-resident list. Entry 007's exercise (waiving a bill) is the follow-up.
+**The user's current hands-on task** is the Notice slice. Session 3 set it up
+as follows — see [`LEARNING-LOG.md`](LEARNING-LOG.md) entry 008 for the brief:
+
+- **Given, complete:** `Notice` entity, `NoticeType` / `NoticeScope` enums and
+  converters, and `NoticeApiIntegrationTest` (20 tests, all failing by design).
+- **User's, as `TODO(entry 008)` scaffolds:** `NoticeRepository` queries,
+  `NoticeDtos` validation + `from()`, all of `NoticeService`, and
+  `NoticeController`'s five endpoints. Unimplemented service methods throw
+  `UnsupportedOperationException`, so the tests fail with 500s rather than
+  breaking compilation of the other 45.
+- **Don't hand over answers.** The scaffold deliberately poses six design
+  decisions (entry 008, "Decisions") without answering them. Review the user's
+  reasoning when they finish; don't pre-empt it.
+
+Entry 007's exercise (waiving a bill) is the follow-up.
 
 **Not yet built, and needed before billing is usable:** there is no endpoint to
 *edit* wing settings. The amounts can only be set by SQL or the dev seeder, and
@@ -396,3 +428,36 @@ is the natural companion to entry 007 — note `SecurityConfig` already reserves
 | Node | v24.18.0 | For the RN phase |
 | Git | 2.55.0 | `gh` CLI **not** installed |
 | OS | Windows 11 Pro 26200 | PowerShell + Git Bash both available |
+
+---
+
+## 11. Google Play listing (found in session 3)
+
+The base44 app is live on Google Play. Play Console → Policy status shows:
+
+| Issue | Effective | Consequence |
+|---|---|---|
+| Must target API 35+ | 31 Aug 2025 | Hidden from **new** users on Android versions above its target |
+| Must target API 36+ | **31 Aug 2026 — already enforced** | **Every update is rejected** until a build targets API 36 |
+
+The app is **not** removed: existing installs keep working, and the listing
+stays up. It just can't change. Install base on the signing page reads 0.0%.
+
+What the rewrite needs to take the listing over:
+
+- **Package name `com.prideuniversal.app`** — the Expo `android.package` must
+  be exactly this, from the first build.
+- **Play App Signing is ON** — Google holds the app signing key. Uploads are
+  signed with the *upload* key; if nobody can find it, Play Console → Test and
+  release → App integrity → App signing → **Request reset** issues a new one
+  (takes a few days — start it before the first RN upload, not on the day).
+- **Target API 36** — Expo SDK 54+ defaults to it. Re-check the requirement
+  when Phase 2 starts: Google raises it every August.
+- `versionCode` must exceed the old build's.
+
+How the current Android build was produced (Base44's publishing, a PWA wrapper,
+or a third party) is **unknown** — it is in neither repo. It doesn't matter for
+the plan above.
+
+If anyone does start using the old app before the rewrite ships, reconsider
+unpublishing it: it's the build with the §1 auth hole.
