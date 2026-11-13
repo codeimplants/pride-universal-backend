@@ -1,463 +1,134 @@
 # Session Handoff
 
-**Last updated:** 2026-11-14 (session 3 — new machine, Notice scaffold, Play Store status)
+**Last updated:** 2026-11-14 (session 3 — delivery mode: full API, messaging, dev on the VPS, Nexus)
 **Purpose:** Everything a fresh session needs to continue without re-deriving context.
 
 ---
 
 ## 1. What this project is
 
-Rewriting **Pride Universal**, a housing society management app (Wings A/B —
-flats, maintenance bills, complaints, notices, meetings, visitors, vendors,
-marketplace, accounts), off the base44 platform.
+Rewriting **Pride Universal**, a housing society management app (Wings A/B — flats, maintenance bills,
+complaints, notices, meetings, visitors, vendors, marketplace, accounts), off the Base44 platform.
 
-**Two-phase plan, in this order:**
+- **Backend** (this repo) — Java 21 / Spring Boot 3.5 / Postgres 16. **Feature-complete for Base44 parity,
+  deployed to dev.**
+- **App** — Expo / React Native for Android + iOS, RN Web for web, in `codeimplants/pride-universal`
+  (replacing the Base44 code there; the old app goes to an archive branch, as RestoBill did). **Next.**
 
-1. **Backend first** (in progress) — Java/Spring Boot replacing base44's data
-   layer. Deliberately sequenced first: it fixes a critical security hole on its
-   own schedule, and leaves the existing web UI working as a known-good client
-   to validate against.
-2. **React Native rewrite** (not started) — Expo, iOS/Android primary, RN Web
-   enabled but not gating.
+### Working mode (changed 2026-11-14 — this replaces the old "working agreement")
 
-### Why the rewrite (the original finding)
+The user said: **"No learning, just delivery on priority to prod."** Claude builds everything. No more
+exercises, "Your turn" sections or interview Q&A; `LEARNING-LOG.md` is historical. Keep tests and
+operations docs. Launch decisions: **everything at once** (full Base44 parity), **Android + iOS + web**,
+codeimplants.com domains.
 
-The base44 app's authentication **was not authentication**. Verified in the
-original source:
+### Why the rewrite
 
-- `MOCK_OTP = '000000'` hardcoded in the OTP function, and printed on the login
-  screen.
-- `verifyOtp` returned the user's role as plain JSON. The client stored it in
-  `sessionStorage`; `useRole()` read it back. So
-  `sessionStorage.setItem('otp_user_role','admin')` **made you an admin.**
-- Admin's mobile number hardcoded in committed source.
-- `requiresAuth: false` on the API client.
-
-Net effect: resident names, phone numbers, vehicle registrations and payment
-history were readable/writable by anyone who could reach the app URL.
-
-**There is no live production data** — confirmed by the user. This is a
-clean-slate rebuild, no migration or dual-run cutover needed.
+The Base44 app's authentication was not authentication: `MOCK_OTP = '000000'` printed on the login screen,
+the role stored in `sessionStorage` (so `sessionStorage.setItem('otp_user_role','admin')` made you admin),
+`requiresAuth: false`. Every resident's phone number was readable by anyone. **No production data exists**;
+clean-slate rebuild.
 
 ---
 
-## 2. Repository layout
+## 2. Follow the sibling projects
 
-```
-D:\CI Projects\pride-universal\            <- parent (plain folder, NOT a repo)
-                                              (was C:\RN\pride-universal on the old machine)
-├── pride-universal-frontend\              <- base44 app, being retired
-│   └── origin: github.com/codeimplants/pride-universal.git
-└── pride-universal-backend\               <- active work
-    └── origin: github.com/codeimplants/pride-universal-backend.git
-```
-
-Two **separate** git repos, deliberately — independent CI and deploy cadence
-(backend → VPS, app → app stores).
-
-State as of session 3:
-- **backend** — `main` fast-forwarded to `a2c55b4` (sessions 2's three commits,
-  previously on `feat/flat-slice-and-tests`). **4 commits ahead of
-  `origin/main`, not pushed.** The session 3 Notice scaffold sits on top of it.
-- **frontend** — on local branch `chore/npm-allow-scripts` (`9206339`, 20 Oct,
-  one commit, never pushed); `main` = `origin/main` = `38e087c`.
-
-> Optional: no `.code-workspace` exists. A multi-root one would give both repos
-> their own Source Control entry in one window.
+| Concern | Copied from |
+|---|---|
+| Deploy (Docker on the shared VPS, nginx + certbot, dev/prod) | `restobill-backend/deploy`, `scripts/deploy.sh` |
+| OTP delivery | RestoBill's `OtpSenderConfig` → our `MessagingSmsSender` |
+| Nexus federation | RestoBill `/v1/admin/**` + Feenix `scripts/connect-nexus.sh` |
+| App stack (next) | `restobill-frontend/CLAUDE.md`: Expo 57, expo-router, NativeWind 4, react-query, RHF + zod, `@codeimplants/*` |
 
 ---
 
-## 3. Verification status
-
-**The backend now compiles, boots, migrates and authenticates.** Everything
-below was executed, not reasoned about.
+## 3. State
 
 | Item | Status |
 |---|---|
-| Schema (`V1__initial_schema.sql`) | ✅ Applied to Postgres 16 — 16 tables, `success = t` |
-| Java sources (32 files) | ✅ Compile clean (`release 21` on JDK 23) |
-| Hibernate `ddl-auto: validate` | ✅ Passes against the Flyway schema |
-| App startup (`dev` profile) | ✅ Starts, seeds 8 flats + admin |
-| Auth flow | ✅ Exercised end-to-end — see the table in LEARNING-LOG entry 005 |
-| Privilege escalation (forged JWT) | ✅ Rejected with 401 |
-| Tests | ✅ **45 integration tests, all passing** (Testcontainers + Postgres 16) — as of session 2, on the old machine |
-| Notice scaffold (session 3) | ⚠️ **Compiles; never run.** No Docker or Postgres on the current machine, so neither the 20 new tests nor Hibernate's `validate` of the new `Notice` mapping have executed. The mapping was checked against `V1__initial_schema.sql` by reading only. |
-| Git/GitHub | ⚠️ backend `main` 4 commits ahead of origin — see §2 |
+| API | ✅ All Base44 features: auth, flats, bills (+ waive), notices, complaints, meetings + resolutions, visitors, vendors, marketplace, ledger, settings, users/roles, profile + account deletion, dashboard, Nexus console |
+| Migrations | V1 schema, V2 complaint number sequence, V3 deleted-account log |
+| Unit tests | ✅ `MessagingSmsSenderTest` (7) runs locally |
+| Integration tests | ⚠️ ~95 written (45 old + new suites), **not run since session 2**: no Docker on this machine. The user is installing Docker Desktop. Run `.\mvnw.cmd -B test` before any prod deploy (deploy.sh enforces it) |
+| Dev environment | ✅ **Live on the VPS** (`pride-api-dev`, 127.0.0.1:8111). Migrations applied; a 27-step end-to-end smoke test passed (OTP via messaging dev, billing, helpdesk, notices, meetings, gate, ledger, vendors, marketplace, console) |
+| Messaging | ✅ dev: app `pride-universal` in messaging dev, key in `~/pride/dev.env`. prod: not yet |
+| Nexus | ✅ Pride dev registered in Nexus dev + preprod (`com.prideuniversal.app`, federation at `http://127.0.0.1:8111/api/admin`). Server-tab inventory entry committed in nexus-backend **locally, not pushed** (`8f67fae`). Prod: not yet |
+| DNS / nginx | ❌ Waiting on the user: A records for `api.pride` / `dev.api.pride.codeimplants.com`, then `sudo bash ~/pride/install-nginx.sh` |
+| Prod | ❌ Not deployed. Needs: passing tests, messaging prod connect, DNS + nginx, first admin, Nexus prod registration |
+| App | ❌ Not started |
 
-**Zero compile errors on the first build** (the previous handoff predicted
-2–5). All three bugs found were runtime/integration ones — see
-[`LEARNING-LOG.md`](LEARNING-LOG.md) entry 005 for why that is the interesting
-part.
-
-Test suites: `AuthFlowIntegrationTest` (13), `FlatApiIntegrationTest` (15),
-`MaintenanceBillApiIntegrationTest` (17). Run them with `.\mvnw.cmd -B test`
-— they need the Docker daemon, not `docker compose up`, since Testcontainers
-starts its own Postgres. The whole suite takes about 30 seconds.
+Smoke test: `~/pride/smoke-dev.sh` on the server (test numbers `99999000xx`, code 123456).
 
 ---
 
-## 4. Environment setup — both original blockers cleared
+## 4. Environment (this machine: `D:\CI Projects`, Windows 11 Home)
 
-> ⚠️ **Session 3 moved to a different machine** (`D:\CI Projects\…`, Windows 11
-> Home). The rest of §4 and §10 describe the *old* one. Differences found:
->
-> | | Old machine | Current machine |
-> |---|---|---|
-> | JDK | 8 default, use jdk-23 override | **Temurin 21 is `JAVA_HOME`** — no override needed |
-> | Docker | Rancher Desktop (moby) | **None.** `C:\Program Files\Docker` is empty (uninstalled ~31 Oct). **Tests cannot run until Docker Desktop or Rancher Desktop is installed.** |
-> | `~/.m2/settings.xml` | Corporate Nexus mirror | Absent. `.mvn/settings.xml` is harmless here; keep it for the old machine. |
-> | Port 8080 | Taken | Free |
-> | `gh` CLI | Not installed | 2.102 installed |
-> | Android SDK | — | Platforms 34–36, build-tools 36 — ready for Phase 2 |
->
-> `.\mvnw.cmd -B test-compile` works as-is.
-
-Nothing needed installing. Resolutions, in the order they mattered:
-
-### Java — use JDK 23, no install required
-
-`JAVA_HOME` still points at **Java 8** system-wide, and **JDK 21 is still
-absent**. Neither matters: `pom.xml` targets `release 21`, and the already
-installed **`jdk-23`** compiles to that target fine. Set it per-shell rather
-than changing the machine (Java 8 may be there for other work):
-
-```powershell
-$env:JAVA_HOME = 'C:\Program Files\Java\jdk-23'
-```
-
-Installing Temurin 21 remains optional, not required. Lombok 1.18.38 (managed
-by Boot 3.5.0) is happy on 23; JDK 25 is the one to avoid.
-
-### Docker — Rancher Desktop, already on `moby`
-
-Its settings were already `containerEngine.name = "moby"` with Kubernetes
-disabled, so only launching it was needed. `docker compose up -d` then brings
-up `pride-db` (healthy in ~10s).
-
-### ⚠️ Maven — the corporate `settings.xml` breaks this project
-
-**This was the real blocker, and it was not in the previous handoff.**
-`~/.m2/settings.xml` is a Netcracker corporate config with:
-
-```xml
-<mirror><id>project-thirdparty-group-mirror</id>
-        <mirrorOf>central,...</mirrorOf>
-        <url>https://nexussrv.netcracker.com/...</url></mirror>
-```
-
-It mirrors **all of `central`** to an internal Nexus that is unreachable from
-this machine (connection refused — VPN-only). With it active *every* dependency
-fails to resolve.
-
-Fixed without touching the corporate file: [`.mvn/settings.xml`](../.mvn/settings.xml)
-pins resolution to Maven Central and uses its own local repository
-(`~/.m2/repository-oss`), so the corporate cache is neither read nor written.
-[`.mvn/maven.config`](../.mvn/maven.config) applies it automatically — plain
-`mvnw` picks it up with no extra flags.
-
-### ⚠️ Use `mvnw.cmd`, not `./mvnw`, on this machine
-
-The Bash wrapper script fails under Git Bash while installing Maven itself:
-
-```
-mv: cannot move '/tmp/.../apache-maven-3.9.9' to '.../dists/...': Permission denied
-fail to move MAVEN_HOME
-```
-
-`mvnw.cmd` from PowerShell works. Note the shell trap that hid this: piping to
-`tail` makes `$?` the exit status of `tail`, so the failed build reported
-**exit 0**. Check `$LASTEXITCODE` / `PIPESTATUS`, not the pipeline's status.
-
-### ⚠️ Port 8080 is taken — run on 8090
-
-A `node`/pnpm process from another project listens on 8080. `server.port` is
-`${PORT:8080}`, so override rather than kill it:
-
-```powershell
-$env:PORT = '8090'
-```
-
-Swagger UI is therefore at **http://localhost:8090/swagger-ui.html**.
-(The other project's Postgres is on 5433; 5432 is free for ours.)
-
-### ⚠️ Testcontainers is pinned to 2.0.5, above Spring Boot's managed version
-
-Boot 3.5.0 manages Testcontainers 1.21.0, whose docker-java 3.4.2 negotiates
-Docker API 1.32. Docker Engine 29 rejects anything below 1.41, so every
-container start failed with *"client version 1.32 is too old"*. `pom.xml`
-overrides `<testcontainers.version>` to 2.0.5. **Do not remove that override**
-while the daemon is Docker 29+. Details in LEARNING-LOG entry 006.
+- `JAVA_HOME` = Temurin 21. Use `.\mvnw.cmd` (PowerShell) or `./mvnw.cmd` from Git Bash.
+- **No Docker** yet → integration tests can't run; `deploy.sh --env dev --skip-tests` is allowed for dev only.
+- `.mvn/settings.xml` pins Maven Central (needed on the old corporate machine; harmless here).
+- Testcontainers is pinned to 2.0.5 (Docker 29 needs API ≥ 1.41) — don't remove the override.
+- PowerShell 5.1 `Set-Content -Encoding utf8` writes a BOM that breaks javac. Edit files with Python or the editor.
+- SSH alias `hostinger-vps` (31.97.61.191, user sanskarpandit) works from here.
+- Git: commit as **Mahesh Garade <maheshgarade@gmail.com>** (repo-local config; the global identity is someone else's).
 
 ---
 
-## 5. How to run it
+## 5. Server layout (see `deploy/README.md`)
 
-```powershell
-# 1. Start Rancher Desktop (GUI), then:
-docker compose up -d              # pride-db, healthy in ~10s
+`~/pride/{dev,prod}.env` (secrets, mode 600), `~/pride/{dev,prod}/app.jar` (+ `app.prev.jar`, `VERSION`,
+`uploads/`), container `pride-postgres` on network `pride`, databases `pride_dev` / `pride_prod`, nightly
+backup 02:55 to `~/backups/pride`. Ports 8110 prod / 8111 dev. nginx closes `/actuator/` and `/api/admin/`.
 
-# 2. Build / run  (JDK 23 + port 8090; see §4 for why)
-$env:JAVA_HOME = 'C:\Program Files\Java\jdk-23'
-$env:PORT = '8090'
-.\mvnw.cmd clean compile
-.\mvnw.cmd spring-boot:run "-Dspring-boot.run.profiles=dev"
-```
+---
 
-Startup takes ~15s once dependencies are cached. Swagger UI:
-http://localhost:8090/swagger-ui.html
+## 6. Decisions — don't re-litigate
 
-Exercising auth (the OTP is returned in `dev_otp` in the dev profile):
-
-```bash
-curl -s -X POST http://localhost:8090/api/auth/otp/send \
-  -H 'Content-Type: application/json' -d '{"mobile":"9876543210"}'
-
-curl -s -X POST http://localhost:8090/api/auth/otp/verify \
-  -H 'Content-Type: application/json' -d '{"mobile":"9876543210","otp":"<code>"}'
-```
-
-Two behaviours that look like faults but are the controls working:
-**429** on a second OTP within 60s (resend cooldown), and **401** on re-using
-an OTP (single-use).
-
-Seeded accounts (dev profile only, `DevDataSeeder`, idempotent on restart):
-
-| Mobile | Role |
+| Decision | Choice |
 |---|---|
-| `9850929698` | admin |
-| `9876543210` | resident (Ramesh Kulkarni, A-101, owner) |
-| `9876543212` | resident (Amit Patil, A-102, tenant) |
+| Backend | Java 21 + Spring Boot 3.5, Maven, Postgres 16, Flyway (`ddl-auto: validate`) |
+| OTP | Pride generates/verifies its own codes; Code Implants Messaging delivers them (no DLT registration needed). Non-prod code is always 123456 |
+| `OTP_DEV_MODE` | Defaults to **false**; refused at startup with a live messaging key |
+| Access token TTL | 1 hour (role changes and deletions take effect quickly); refresh 30 days |
+| Hosting | Shared VPS, Docker, beside RestoBill — not a separate VPS/Caddy as first planned |
+| Uploads | Base44 never implemented them; not needed for launch parity. Folder and mount are ready |
+| Play Store | Same listing `com.prideuniversal.app`, Play App Signing on; RN app ships as the update (see §8) |
 
-Residents are auto-provisioned on first OTP login if their mobile matches a
-flat's owner/tenant/alternate contact — **verified working**. Committee roles
-are never self-assigned.
+### Rules worth knowing in the code
 
----
-
-## 6. Decisions already made — do not re-litigate
-
-| Decision | Choice | Rationale |
-|---|---|---|
-| Backend platform | Java 21 + Spring Boot 3.5 | User's choice over Supabase. Accepts ~1–2 weeks extra building auth/storage/access-control in exchange for no vendor lock-in — the thing that motivated leaving base44. |
-| Build tool | **Maven** | User's explicit choice. `./mvnw` wrapper pins 3.9.9; the system Maven 3.3.9 (2015) must not be used. |
-| Database | PostgreSQL 16 | Version parity with the target VPS. |
-| Migrations | Flyway, `ddl-auto: validate` | Hibernate never owns the schema. |
-| Auth | SMS OTP via MSG91 | User's choice. **Blocked on TRAI DLT registration** (approved sender ID + templates against the society's registered entity; days-to-weeks). `SMS_PROVIDER=console` unblocks everything else meanwhile. |
-| Repos | Two separate | Independent deploy cadence. |
-| Hosting | VPS + Docker Compose + Caddy | ~2 vCPU / 4GB. Budget ~400MB for the JVM. **Host in India** (DO Bangalore / AWS Mumbai / E2E) for latency and data residency. |
-| RN Web | Enabled, not gating | Ships nearly free with Expo Router; committee screens benefit from a big screen. Residents are on phones. |
-| Old Play Store app | **Not rebuilt** for API 36 (session 3) | Rebuilding it would re-ship the broken auth in §1. The RN app ships as an update to the same listing instead — see §11. Backend roadmap continues first. |
+- Authorisation lives on services (`@PreAuthorize`); URL rules are the outer fence.
+- Residents see only their own flat's complaints and visitors (Base44 showed everyone everything).
+- Hidden notices/meetings are **404**, not 403 (existence of a draft is the secret).
+- Nobody grants a role above their own; the last active admin can't be removed or deleted.
+- `/api/admin/**` is Nexus-only (service token), camelCase keys — the rest of the API is snake_case.
+- `?status=open` binds through `CodedEnum` + `WebConfig` (Spring's default would 400 on lowercase codes).
 
 ---
 
-## 7. Working agreement (important)
+## 7. Next steps
 
-The user is learning backend development and explicitly asked not to be handed
-a repo they can't defend in an interview.
-
-**The model:**
-- Claude builds the **reference slice** for each pattern, plus genuinely hard
-  parts (security, transactions, concurrency).
-- The user builds the **repetitions** — Claude provides scaffolds with
-  specified TODOs and failing tests.
-- Every slice gets an entry in [`LEARNING-LOG.md`](LEARNING-LOG.md): what was
-  built, what problem it solves, key decisions, **interview Q&A**, and a
-  hands-on exercise.
-
-Keep writing those entries. They are a primary deliverable, not documentation
-overhead.
+1. **User:** DNS A records → `sudo bash ~/pride/install-nginx.sh`. Install Docker Desktop.
+2. **Ask the user:** push + deploy the nexus-backend inventory commit.
+3. Run the full test suite once Docker exists; fix whatever it finds.
+4. **Build the app** (Expo, `codeimplants/pride-universal`): port every Base44 screen; version control +
+   analytics through Nexus (the dev SDK key is on the App row in Nexus dev; identify users by their Pride user id).
+5. Prod go-live (ask first): messaging prod connect, `deploy.sh --env prod`, first admin row, Nexus prod
+   registration, Firebase Hosting for web, Play upload key → AAB to the existing listing, iOS (needs an Apple
+   Developer account).
 
 ---
 
-## 8. Built so far
+## 8. Google Play listing
 
-See [`LEARNING-LOG.md`](LEARNING-LOG.md) entries 001–006 for the reasoning
-behind each.
-
-- **Schema** — all 12 entities with FKs, CHECK constraints and indexes the JSON
-  originals lacked. `UNIQUE (flat_id, year, month)` makes bill generation
-  idempotent.
-- **Common** — `BaseEntity` (with the proxy-safe `equals`/constant `hashCode`
-  reasoning documented), `Role`, `ApiException`, `GlobalExceptionHandler`.
-- **Config** — `AppProperties` (record-based binding), `SecurityConfig`,
-  `CacheConfig` (Caffeine, `wingSettings` only), `OpenApiConfig`,
-  `DevDataSeeder` (`@Profile("dev")`).
-- **Auth** — `JwtService`, `JwtAuthFilter`, `OtpService`, `OtpAttemptRecorder`,
-  `TokenService`, `AuthController`, DTOs.
-- **SMS** — `SmsSender` interface, `ConsoleSmsSender`, `Msg91SmsSender`.
-- **Domain** — `User` entity + repository; **`Flat` is a complete CRUD slice**
-  (`FlatDtos`, `FlatService`, `FlatController`) and is the pattern the
-  remaining domains should copy — see entry 006.
-- **Billing** — `MaintenanceBill` + `WingSettings` entities, `BillStatus` /
-  `PaymentMode` enums with converters, `MaintenanceBillService`
-  (idempotent generation, concurrent-safe mark-paid, overdue sweep),
-  `MaintenanceBillController`, `OverdueBillJob` (`@Scheduled`, 02:30 IST),
-  `WingSettingsService` (the one cached thing) — see entry 007.
-- **Tests** — `AbstractIntegrationTest` (singleton Testcontainers Postgres)
-  plus three suites. 45 tests.
-
-### Three things worth understanding in the auth code
-
-1. **`OtpAttemptRecorder`** uses `REQUIRES_NEW` because the failed-attempt
-   increment would otherwise be rolled back by the exception thrown right after
-   it — silently giving unlimited guesses at a 6-digit code. It is a *separate
-   bean* because Spring's `@Transactional` proxy is bypassed by self-invocation.
-2. **`OtpService.checkBurstLimit()`** uses `ConcurrentHashMap.compute()` for an
-   atomic read-modify-write. Get-then-put would leak the limit under exactly the
-   concurrency it exists to stop.
-3. **BCrypt for OTPs, SHA-256 for refresh tokens** — different threat models.
-   OTPs are ~20 bits and brute-forceable, so they need slow hashing. Refresh
-   tokens are 384 bits (unbruteforceable) but must be *looked up by value*, and
-   BCrypt's per-row salt would force a table scan.
-
-### Bugs already found and fixed (don't reintroduce)
-
-Found by review, before the first run:
-
-- `TokenService.refresh()` read the caller from `SecurityContextHolder`, but the
-  refresh endpoint is unauthenticated — always null. Now returns the user
-  alongside the tokens.
-- `/api/auth/me` sat inside a `permitAll("/api/auth/**")` block *and* the JWT
-  filter skipped the whole prefix, so it would have 401'd every caller. Public
-  paths are now listed individually and the filter no longer skips `/api/auth`.
-
-Found by **running it** (session 2 — full write-up in LEARNING-LOG entry 005):
-
-- **`User.role` never persisted.** `@Enumerated(EnumType.STRING)` writes
-  `"ADMIN"`; the `ck_user_role` CHECK accepts only `'admin'`. The `@JsonValue`
-  on `Role` is Jackson-only and does not affect JPA. Fixed with
-  `RoleConverter` (`@Converter(autoApply = true)`) — **new file**; the
-  `@Enumerated` annotation was removed from `User`.
-- **Anonymous requests got 403, not 401**, with an empty body.
-  `@RestControllerAdvice` cannot see exceptions thrown in the Spring Security
-  *filter chain*, so its `AuthenticationException` handler was dead code. Fixed
-  with `SecurityErrorResponder` — **new file** — wired into
-  `http.exceptionHandling(...)`.
-- **404s and malformed JSON were reported as 500s** and logged at ERROR with
-  stack traces, because `@ExceptionHandler(Exception.class)` swallowed Spring
-  MVC's typed exceptions. `GlobalExceptionHandler` now handles
-  `NoResourceFoundException` (404) and `HttpMessageNotReadableException` (400)
-  explicitly, and the catch-all honours `ErrorResponse` statuses (so 405/415
-  are correct without named handlers).
-
-Found while building the Flat slice (entry 006):
-
-- **`update()` returned a stale `version`.** Hibernate increments `@Version` at
-  flush, which with a plain `save()` happens at commit — after the response DTO
-  was built. The client's next update then sent a version the database had
-  moved past and got an inescapable 409. Fixed with `saveAndFlush`. Caught by a
-  test, not by hand; a single update looks fine.
-
-Found while building billing (entry 007):
-
-- **Every flat would have been billed ₹0.** `WingSettingsService` refused a
-  wing with no settings row — but `V1__initial_schema.sql` line 171 seeds a row
-  per wing with every amount defaulted to zero, so the row always exists and
-  the guard never fired. Now checks the *value*, not the row. Caught by three
-  failing tests.
-
-Session 2's work (branch `feat/flat-slice-and-tests`) was fast-forwarded onto
-`main` in session 3. The branch is pushed to origin; `main` is not yet.
-
-Found in session 3, while writing the Notice brief:
-
-- **`FlatService.detail()`'s javadoc reasoned backwards.** It claimed the 403
-  stops a resident telling "does not exist" from "not yours" — but a 403
-  beside a 404 is exactly how they'd tell. The *behaviour* is right (a flat's
-  existence isn't secret; the directory lists every id); the comment now says
-  so, and contrasts the Notice case, where a hidden draft must be a 404.
+Play Console shows the Base44 build blocked from updates until it targets API 36 (enforced 31 Aug 2026) and
+hidden from new users on Android versions above its target. It is **not** removed. The rewrite ships as the
+update: package **`com.prideuniversal.app`**, **Play App Signing ON** (lost upload key → App integrity →
+Request reset, takes days), target API 36 (Expo SDK 54+), `versionCode` above the old build's. How the old
+build was made is unknown and irrelevant.
 
 ---
 
-## 9. Roadmap
+## 9. History
 
-- [x] **Entry 005** — First run: three bugs the compiler could not catch *(done)*
-- [x] **Entry 006** — Flat CRUD reference slice + first 28 tests *(done)*
-- [x] **Entry 007** — Maintenance bills: generation, payment, overdue job *(done)*
-- [ ] **Entry 008** — Notices *(**user builds** — **in progress**; scaffold +
-      20 failing tests + brief written in session 3)*, then waiving bills
-      (entry 007's exercise), then the remaining 8 domains
-- [ ] **Entry 009** — File uploads (`photo_url` / `attachment_url` /
-      `receipt_url` — base44 never implemented these despite the schema fields)
-- [ ] **Entry 010** — Docker + Caddy + VPS deployment
-- [ ] **Phase 2** — React Native rewrite
-
-**The user's current hands-on task** is the Notice slice. Session 3 set it up
-as follows — see [`LEARNING-LOG.md`](LEARNING-LOG.md) entry 008 for the brief:
-
-- **Given, complete:** `Notice` entity, `NoticeType` / `NoticeScope` enums and
-  converters, and `NoticeApiIntegrationTest` (20 tests, all failing by design).
-- **User's, as `TODO(entry 008)` scaffolds:** `NoticeRepository` queries,
-  `NoticeDtos` validation + `from()`, all of `NoticeService`, and
-  `NoticeController`'s five endpoints. Unimplemented service methods throw
-  `UnsupportedOperationException`, so the tests fail with 500s rather than
-  breaking compilation of the other 45.
-- **Don't hand over answers.** The scaffold deliberately poses six design
-  decisions (entry 008, "Decisions") without answering them. Review the user's
-  reasoning when they finish; don't pre-empt it.
-
-Entry 007's exercise (waiving a bill) is the follow-up.
-
-**Not yet built, and needed before billing is usable:** there is no endpoint to
-*edit* wing settings. The amounts can only be set by SQL or the dev seeder, and
-bill generation refuses to run until they are non-zero. A `/api/settings` slice
-is the natural companion to entry 007 — note `SecurityConfig` already reserves
-`/api/settings/**` for admin and chairman.
-
-### Deferred / open
-
-- **TRAI DLT registration** for MSG91 — long lead time, start it early. Needs
-  the society's registration documents.
-- **Production checklist** in [`README.md`](../README.md): `JWT_SECRET` must be
-  real random material, `OTP_DEV_MODE=false`, `SPRING_PROFILES_ACTIVE` not
-  `dev`, `CORS_ORIGINS` restricted.
-
----
-
-## 10. Environment reference
-
-| Tool | Version | Notes |
-|---|---|---|
-| Java (active) | 1.8.0_202 | `JAVA_HOME` still points here — override per-shell |
-| Java (used to build) | **jdk-23** | Compiles `release 21`. 21 still absent, not needed |
-| Maven (system) | 3.3.9 (2015) | ⚠️ Do not use — use `mvnw.cmd` (pins 3.9.9) |
-| Maven settings | `.mvn/settings.xml` | ⚠️ Required — bypasses the corporate Nexus mirror |
-| Gradle | 9.3.1 | Current, but project uses Maven |
-| Docker | 29.6.2-rd (moby) | Rancher Desktop; `pride-db` runs on 5432 |
-| Port 8080 | taken by node/pnpm | Run the app with `PORT=8090` |
-| Node | v24.18.0 | For the RN phase |
-| Git | 2.55.0 | `gh` CLI **not** installed |
-| OS | Windows 11 Pro 26200 | PowerShell + Git Bash both available |
-
----
-
-## 11. Google Play listing (found in session 3)
-
-The base44 app is live on Google Play. Play Console → Policy status shows:
-
-| Issue | Effective | Consequence |
-|---|---|---|
-| Must target API 35+ | 31 Aug 2025 | Hidden from **new** users on Android versions above its target |
-| Must target API 36+ | **31 Aug 2026 — already enforced** | **Every update is rejected** until a build targets API 36 |
-
-The app is **not** removed: existing installs keep working, and the listing
-stays up. It just can't change. Install base on the signing page reads 0.0%.
-
-What the rewrite needs to take the listing over:
-
-- **Package name `com.prideuniversal.app`** — the Expo `android.package` must
-  be exactly this, from the first build.
-- **Play App Signing is ON** — Google holds the app signing key. Uploads are
-  signed with the *upload* key; if nobody can find it, Play Console → Test and
-  release → App integrity → App signing → **Request reset** issues a new one
-  (takes a few days — start it before the first RN upload, not on the day).
-- **Target API 36** — Expo SDK 54+ defaults to it. Re-check the requirement
-  when Phase 2 starts: Google raises it every August.
-- `versionCode` must exceed the old build's.
-
-How the current Android build was produced (Base44's publishing, a PWA wrapper,
-or a third party) is **unknown** — it is in neither repo. It doesn't matter for
-the plan above.
-
-If anyone does start using the old app before the rewrite ships, reconsider
-unpublishing it: it's the build with the §1 auth hole.
+Sessions 1–2 (old machine): schema, auth, flats, billing, 45 integration tests; bugs found by running
+(role persistence, 401 vs 403, error mapping, stale version echo, ₹0 bills) are written up in
+`LEARNING-LOG.md` entries 005–007.
