@@ -872,10 +872,113 @@ of who owed money at the time, not a pointer to who owns the flat now.
 
 ---
 
+## Entry 008 — Notices: the first slice you build *(in progress)*
+
+**Files:** everything under
+[`domain/notice/`](../src/main/java/com/prideuniversal/domain/notice/), and
+[`NoticeApiIntegrationTest.java`](../src/test/java/com/prideuniversal/domain/notice/NoticeApiIntegrationTest.java)
+
+This entry is a brief, not a write-up — yet. The write-up is the last step of
+the exercise, and it is yours.
+
+### What you were given, and what is yours
+
+| Given, complete | Yours — marked `TODO(entry 008)` |
+|---|---|
+| `Notice` entity, `NoticeType`, `NoticeScope`, both converters | `NoticeRepository` — the queries |
+| `NoticeApiIntegrationTest` — 20 tests, all failing | `NoticeDtos` — validation, `from()`, the null-defaults decision |
+| | `NoticeService` — every rule |
+| | `NoticeController` — five endpoints |
+
+The persistence layer is given because it repeats a pattern you have seen three
+times. The tests are given because they are the specification. Everything that
+*decides* something is yours.
+
+A correction to entry 006's exercise text: it says a notice "has a publish
+date". The schema has an `is_published` **flag**, not a date — a draft is
+simply `is_published = false`. Scheduled publishing would need a `V2__`
+migration; it is a stretch goal below, not part of the slice.
+
+### The rules, and the test that pins each
+
+| Rule | How it differs from Flat | Test |
+|---|---|---|
+| Only the communications roles write notices | Not Flat's `CAN_EDIT` — and not "any management role" | `treasurerCannotPostNotices`, `residentCannotPostNotices` |
+| Drafts are invisible to everyone except writers | Flat has no draft state | `draftIsHiddenFromAResidentsList`, `writersSeeDrafts` |
+| A notice you may not see is **404**, not 403 | Flat deliberately returns 403 | `draftIsNotFoundToAResident` |
+| Residents see `both` + their own wing's notices | Flat's directory is society-wide | `wingScopedNoticeOnlyReachesThatWing` |
+| Pinned first, then newest | Flat sorts by wing and number | `pinnedNoticesComeFirst` |
+| Author comes from the token, never the body | Flat has no author | `authorComesFromTheTokenNotTheBody` |
+| AGM/SGM needs a meeting date | Like `requireTenantNamed`, but no DB constraint behind it | `agmWithoutMeetingDateIsBadRequest` |
+| Version required; stale is 409; response version usable | **Same** as Flat | the three `update…` tests |
+| Delete removes it for everyone | Flat can only deactivate | `committeeDeletesANotice` |
+
+### Decisions you will have to make — and defend
+
+Each is flagged in the code where it arises. None has a test forcing the
+answer, except where noted.
+
+1. **What a null `is_published` means.** The schema says `TRUE`. Is that the
+   safe default for a message that goes to every flat?
+2. **Why a hidden notice is 404 when a hidden flat is 403.** The test forces
+   the answer; you supply the reason. `FlatService.detail()`'s javadoc is half
+   of it.
+3. **Why one response record, when Flat needed two.**
+4. **Hard or soft delete.** `FlatService.deactivate()` gives the reason a flat
+   can't be deleted. Does it hold for a notice?
+5. **Where "visible" is defined.** `list()` filters in a query; `get()` checks
+   one row. If each holds its own copy of the rule, they will drift.
+6. **Whether editing someone else's notice changes its author.**
+
+### Running it
+
+```powershell
+.\mvnw.cmd -B test "-Dtest=NoticeApiIntegrationTest"
+```
+
+The tests need a running Docker daemon (Testcontainers starts its own
+Postgres). Run the whole suite before you call it done: all 45 earlier tests
+must still pass.
+
+### Interview questions this maps to
+
+Write your own answers here once the slice is green — we'll go over them
+together.
+
+- **Q: What's the difference between a 403 and a 404, and when would you
+  deliberately return the "wrong" one?**
+- **Q: What is mass assignment, and how does a request DTO prevent it?**
+- **Q: A filter can live in SQL or in Java after loading. When does the choice
+  matter?**
+- **Q: Your list endpoint and your detail endpoint both enforce the same
+  visibility rule. How do you stop them disagreeing?**
+
+### Your turn
+
+1. Make the tests pass, roughly in this order — each step unlocks the next
+   group: controller + `from()` + `create()` → validation → write permissions
+   → `list()`/`get()` visibility → `update()` → `delete()`.
+2. Read [`FlatService`](../src/main/java/com/prideuniversal/domain/flat/FlatService.java)
+   when stuck, rather than asking for the answer.
+3. Delete `NoticeService.todo()`. If it still has callers, you are not done.
+4. Run the **full** suite, not just the Notice tests.
+5. **Refactor:** there are now five enum converters of one shape.
+   `BillStatusConverter`'s javadoc said to extract a shared
+   `CodedEnumConverter<E>` at the fourth. Do it, with the suite as your safety
+   net. (Find out first why `autoApply` still works through a generic base —
+   or whether it does.)
+6. Replace the "Decisions" section above with **What I decided and why**, and
+   answer the interview questions. That write-up is the deliverable, as much
+   as the code.
+7. *Stretch:* scheduled publishing — a `publish_at TIMESTAMPTZ` column in a
+   `V2__` migration, and residents see a notice only once it has passed. Which
+   of your queries change, and what happens to `idx_notice_published`?
+
+---
+
 ## Next up
 
-- [ ] Entry 008 — The remaining 9 domains (**you build** — start with the
-      Notice slice in entry 006's "Your turn", then waiving bills from
-      entry 007's)
+- [ ] Entry 008 — Notices *(in progress — brief above)*, then waiving bills
+      (entry 007's exercise), then the remaining 8 domains
 - [ ] Entry 009 — File uploads (the `photo_url` fields base44 never implemented)
 - [ ] Entry 010 — Docker + Caddy + VPS deployment
