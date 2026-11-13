@@ -33,6 +33,14 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     @EntityGraph(attributePaths = "flat")
     List<User> findAllByRoleIn(List<Role> roles);
 
+    @EntityGraph(attributePaths = "flat")
+    List<User> findAllByOrderByDisplayNameAsc();
+
+    @EntityGraph(attributePaths = "flat")
+    List<User> findAllByRoleOrderByDisplayNameAsc(Role role);
+
+    long countByRoleAndActiveTrue(Role role);
+
     @Query("select u from User u where u.flat.id = :flatId and u.active = true")
     List<User> findActiveByFlatId(@Param("flatId") UUID flatId);
 }

@@ -190,6 +190,27 @@ public class MaintenanceBillService {
         return BillResponse.from(billRepository.saveAndFlush(bill));
     }
 
+    /**
+     * Writes a bill off: admin or chairman only, with a reason, which is kept in
+     * the bill's notes. A paid bill cannot be waived, and a waived bill is never
+     * touched by the overdue sweep, which only looks at pending bills.
+     */
+    @PreAuthorize("hasAnyRole('ADMIN','CHAIRMAN')")
+    @Transactional
+    public BillResponse waive(UUID id, com.prideuniversal.domain.bill.dto.BillDtos.WaiveRequest request) {
+        MaintenanceBill bill = findOrThrow(id);
+        requireCurrentVersion(bill, request.version());
+        if (bill.getStatus() == BillStatus.PAID) {
+            throw ApiException.conflict("This bill is already paid and cannot be waived.");
+        }
+        if (bill.getStatus() == BillStatus.WAIVED) {
+            throw ApiException.conflict("This bill is already waived.");
+        }
+        bill.setStatus(BillStatus.WAIVED);
+        bill.setNotes("Waived: " + request.reason().trim());
+        return BillResponse.from(billRepository.saveAndFlush(bill));
+    }
+
     // =====================================================================
     // Overdue sweep
     // =====================================================================

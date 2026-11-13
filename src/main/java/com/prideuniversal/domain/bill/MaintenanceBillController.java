@@ -74,6 +74,13 @@ public class MaintenanceBillController {
         return billService.markPaid(id, request);
     }
 
+    @PostMapping("/{id}/waive")
+    @Operation(summary = "Write a bill off, with a reason (admin, chairman)")
+    public BillResponse waive(@PathVariable UUID id,
+                              @Valid @RequestBody com.prideuniversal.domain.bill.dto.BillDtos.WaiveRequest request) {
+        return billService.waive(id, request);
+    }
+
     @PostMapping("/run-overdue")
     @Operation(summary = "Run the overdue sweep now instead of waiting for 02:30")
     public OverdueSweepResult runOverdueSweep() {

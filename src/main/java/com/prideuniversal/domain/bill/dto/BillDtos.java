@@ -50,6 +50,16 @@ public final class BillDtos {
      * payment must not both succeed and leave two receipt numbers against one
      * transaction.
      */
+    /** Writing a bill off. The reason is kept in the bill's notes. */
+    public record WaiveRequest(
+            @jakarta.validation.constraints.NotBlank(message = "A reason is required to waive a bill")
+            @Size(max = 1_000, message = "Reason is too long")
+            String reason,
+
+            @NotNull(message = "version is required; re-fetch the bill and send the version it returned")
+            Long version
+    ) {}
+
     public record MarkPaidRequest(
             @NotNull(message = "Payment mode is required")
             PaymentMode paymentMode,

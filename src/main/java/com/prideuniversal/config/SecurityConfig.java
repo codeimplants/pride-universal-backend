@@ -64,7 +64,10 @@ public class SecurityConfig {
                 //     Finer-grained rules live on the service methods via
                 //     @PreAuthorize, so a controller can never be the only
                 //     thing standing between a resident and the ledger. ---
-                .requestMatchers("/api/settings/**")
+                // Everyone reads the settings (residents need the bank and
+                // UPI details to pay); only admin and chairman change them.
+                .requestMatchers(HttpMethod.GET, "/api/settings", "/api/settings/**").authenticated()
+                .requestMatchers("/api/settings", "/api/settings/**")
                     .hasAnyRole("ADMIN", "CHAIRMAN")
                 .requestMatchers("/api/transactions/**")
                     .hasAnyRole("ADMIN", "CHAIRMAN", "SECRETARY", "TREASURER")

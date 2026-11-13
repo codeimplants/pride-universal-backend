@@ -14,7 +14,7 @@ import java.util.Set;
  * their way to admin. Here the role comes from the database, is embedded in a
  * signed JWT, and every permission below is enforced server-side.
  */
-public enum Role {
+public enum Role implements CodedEnum {
 
     ADMIN("admin", 100),
     CHAIRMAN("chairman", 90),

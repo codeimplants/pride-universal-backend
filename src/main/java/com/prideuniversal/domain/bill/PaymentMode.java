@@ -1,5 +1,6 @@
 package com.prideuniversal.domain.bill;
 
+import com.prideuniversal.common.CodedEnum;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 
@@ -11,7 +12,7 @@ import java.util.Arrays;
  * <p>Codes must match {@code ck_bill_mode}:
  * {@code cash, upi, cheque, bank_transfer, neft}.
  */
-public enum PaymentMode {
+public enum PaymentMode implements CodedEnum {
 
     CASH("cash"),
     UPI("upi"),

@@ -3,8 +3,6 @@ package com.prideuniversal.domain.notice;
 import com.prideuniversal.auth.AuthPrincipal;
 import com.prideuniversal.common.ApiException;
 import com.prideuniversal.common.Role;
-import com.prideuniversal.domain.flat.Flat;
-import com.prideuniversal.domain.flat.FlatRepository;
 import com.prideuniversal.domain.notice.dto.NoticeDtos.NoticeRequest;
 import com.prideuniversal.domain.notice.dto.NoticeDtos.NoticeResponse;
 import org.springframework.dao.OptimisticLockingFailureException;
@@ -44,11 +42,11 @@ public class NoticeService {
     private static final String CAN_WRITE = "hasAnyRole('ADMIN','CHAIRMAN','SECRETARY','COMMITTEE_MEMBER')";
 
     private final NoticeRepository noticeRepository;
-    private final FlatRepository flatRepository;
+    private final WingScopes wingScopes;
 
-    public NoticeService(NoticeRepository noticeRepository, FlatRepository flatRepository) {
+    public NoticeService(NoticeRepository noticeRepository, WingScopes wingScopes) {
         this.noticeRepository = noticeRepository;
-        this.flatRepository = flatRepository;
+        this.wingScopes = wingScopes;
     }
 
     // =====================================================================
@@ -140,19 +138,10 @@ public class NoticeService {
         notice.setMeetingVenue(blankToNull(request.meetingVenue()));
     }
 
-    /** The caller's wing is not in the token; it is one indexed lookup by flat id. */
     private Audience audienceOf(AuthPrincipal caller) {
-        if (Role.COMMS.contains(caller.role())) {
-            return Audience.EVERYTHING;
-        }
-        Set<NoticeScope> scopes = EnumSet.of(NoticeScope.BOTH);
-        if (caller.flatId() != null) {
-            flatRepository.findById(caller.flatId())
-                    .map(Flat::getWing)
-                    .flatMap(NoticeScope::forWing)
-                    .ifPresent(scopes::add);
-        }
-        return new Audience(false, scopes);
+        return Role.COMMS.contains(caller.role())
+                ? Audience.EVERYTHING
+                : new Audience(false, wingScopes.addressing(caller));
     }
 
     /** The one definition of which notices a caller may see. */

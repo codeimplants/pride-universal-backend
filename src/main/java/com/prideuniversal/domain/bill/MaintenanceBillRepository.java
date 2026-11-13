@@ -41,6 +41,24 @@ public interface MaintenanceBillRepository extends JpaRepository<MaintenanceBill
 
     List<MaintenanceBill> findByFlat_IdOrderByYearDescMonthDesc(UUID flatId);
 
+    /** Count and total (amount + late fee) of bills in the given states; a null flat means every flat. */
+    @Query("""
+            select new com.prideuniversal.domain.bill.BillTotals(count(b), coalesce(sum(b.amount + b.lateFee), 0))
+            from MaintenanceBill b
+            where b.status in :statuses
+              and (:flatId is null or b.flatId = :flatId)
+            """)
+    BillTotals totals(@Param("statuses") java.util.Collection<BillStatus> statuses, @Param("flatId") UUID flatId);
+
+    /** Money collected against one billing period. */
+    @Query("""
+            select new com.prideuniversal.domain.bill.BillTotals(count(b), coalesce(sum(b.amount + b.lateFee), 0))
+            from MaintenanceBill b
+            where b.status = com.prideuniversal.domain.bill.BillStatus.PAID
+              and b.year = :year and b.month = :month
+            """)
+    BillTotals collected(@Param("year") int year, @Param("month") int month);
+
     /** Candidates for the nightly overdue sweep. */
     List<MaintenanceBill> findByStatusAndDueDateBefore(BillStatus status, LocalDate date);
 

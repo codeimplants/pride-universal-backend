@@ -1,5 +1,6 @@
 package com.prideuniversal.domain.notice;
 
+import com.prideuniversal.common.CodedEnum;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 
@@ -11,7 +12,7 @@ import java.util.Optional;
  *
  * <p>The codes must match {@code ck_notice_scope} in the schema exactly.
  */
-public enum NoticeScope {
+public enum NoticeScope implements CodedEnum {
 
     BOTH("both"),
     WING_A("wing_a"),

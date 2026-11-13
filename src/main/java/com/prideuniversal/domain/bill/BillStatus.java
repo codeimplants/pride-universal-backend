@@ -1,5 +1,6 @@
 package com.prideuniversal.domain.bill;
 
+import com.prideuniversal.common.CodedEnum;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 
@@ -13,7 +14,7 @@ import java.util.Arrays;
  * {@link BillStatusConverter} — see {@link com.prideuniversal.common.Role} for
  * why {@code @Enumerated(STRING)} is the wrong tool here.
  */
-public enum BillStatus {
+public enum BillStatus implements CodedEnum {
 
     /** Raised, not yet due or not yet paid. */
     PENDING("pending"),

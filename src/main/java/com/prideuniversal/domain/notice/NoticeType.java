@@ -1,5 +1,6 @@
 package com.prideuniversal.domain.notice;
 
+import com.prideuniversal.common.CodedEnum;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 
@@ -12,7 +13,7 @@ import java.util.Arrays;
  * Persistence goes through {@link NoticeTypeConverter}, for the same reason
  * {@code BillStatus} has one — see LEARNING-LOG entry 005.
  */
-public enum NoticeType {
+public enum NoticeType implements CodedEnum {
 
     GENERAL("general"),
 
