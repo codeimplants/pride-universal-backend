@@ -46,8 +46,10 @@ class VendorAndMarketplaceIntegrationTest extends AbstractIntegrationTest {
         deleteAs(loginAsNewResident(), url).andExpect(status().isForbidden());
 
         deleteAs(adder, url).andExpect(status().isNoContent());
-        assertThat(body(getAs(adder, "/api/vendors?service_type=electrician")).toString())
+        // Assert the status too: an error body also "does not contain" the id.
+        assertThat(body(getAs(adder, "/api/vendors?service_type=electrician").andExpect(status().isOk())).toString())
                 .doesNotContain(created.get("id").asText());
+        getAs(adder, "/api/vendors?q=sharma").andExpect(status().isOk());
     }
 
     // --- Marketplace --------------------------------------------------------
@@ -80,7 +82,7 @@ class VendorAndMarketplaceIntegrationTest extends AbstractIntegrationTest {
         putAs(loginAsNewResident(), "/api/marketplace/" + id, sold).andExpect(status().isForbidden());
         putAs(poster, "/api/marketplace/" + id, sold).andExpect(status().isOk());
 
-        assertThat(body(getAs(poster, "/api/marketplace")).toString()).doesNotContain(id);
+        assertThat(body(getAs(poster, "/api/marketplace").andExpect(status().isOk())).toString()).doesNotContain(id);
         assertThat(body(getAs(poster, "/api/marketplace?mine=true")).toString()).contains(id);
     }
 

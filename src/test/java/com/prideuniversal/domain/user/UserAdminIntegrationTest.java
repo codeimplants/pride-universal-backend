@@ -47,8 +47,11 @@ class UserAdminIntegrationTest extends AbstractIntegrationTest {
 
         putAs(loginAs(Role.CHAIRMAN), "/api/users/" + admin.getId(), demote).andExpect(status().isForbidden());
 
+        // Signing in updates last_login_at and so the row's version: read it after login.
+        String adminToken = loginAs(adminMobile);
         demote.put("role", "chairman");
-        putAs(loginAs(adminMobile), "/api/users/" + admin.getId(), demote).andExpect(status().isBadRequest());
+        demote.put("version", userRepository.findById(admin.getId()).orElseThrow().getVersion());
+        putAs(adminToken, "/api/users/" + admin.getId(), demote).andExpect(status().isBadRequest());
     }
 
     @Test

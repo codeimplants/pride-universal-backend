@@ -34,7 +34,8 @@ public class VendorService {
 
     @Transactional(readOnly = true)
     public List<VendorResponse> list(ServiceType type, String q) {
-        return vendorRepository.search(type, Text.blankToNull(q)).stream().map(VendorResponse::from).toList();
+        String term = Text.blankToNull(q);
+        return vendorRepository.search(type, term == null ? "" : term).stream().map(VendorResponse::from).toList();
     }
 
     @Transactional(readOnly = true)

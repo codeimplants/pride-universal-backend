@@ -32,7 +32,7 @@ class MeetingApiIntegrationTest extends AbstractIntegrationTest {
                 .get("id").asText();
 
         String wingA = loginAs(residentOfWing("A"));
-        assertThat(body(getAs(wingA, "/api/meetings")).toString()).doesNotContain(id);
+        assertThat(body(getAs(wingA, "/api/meetings").andExpect(status().isOk())).toString()).doesNotContain(id);
         getAs(wingA, "/api/meetings/" + id).andExpect(status().isNotFound());
 
         getAs(loginAs(residentOfWing("B")), "/api/meetings/" + id).andExpect(status().isOk());

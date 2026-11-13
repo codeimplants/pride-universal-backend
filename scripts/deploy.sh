@@ -19,6 +19,9 @@
 #   --rollback        Swap <env>/app.jar with <env>/app.prev.jar and restart. Twice swaps back.
 #   --inspect         Read-only survey of the server.
 #   --skip-tests      Build without running the test suite (dev only; prod always runs it).
+#   --remote-tests    Run the test suite ON THE SERVER (in a throwaway Maven container that uses the
+#                     server's Docker for Testcontainers) against this exact commit, then build here
+#                     without tests. For a machine with no Docker. Needs a clean tree.
 #
 # On the server (deploy/setup-server.sh creates all of it once, no sudo):
 #   ~/pride/<env>.env          settings + secrets, never read or transported by this script
@@ -46,7 +49,7 @@ HEALTH_PATH="${HEALTH_PATH:-/actuator/health}"
 HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-120}"
 CONTAINER_MEMORY="${CONTAINER_MEMORY:-768m}"
 
-ENV_NAME=""; ASSUME_YES=0; DRY_RUN=0; RESTART_ONLY=0; ROLLBACK=0; INSPECT=0; SKIP_TESTS=0
+ENV_NAME=""; ASSUME_YES=0; DRY_RUN=0; RESTART_ONLY=0; ROLLBACK=0; INSPECT=0; SKIP_TESTS=0; REMOTE_TESTS=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --env) ENV_NAME="${2:-}"; shift 2 ;;
@@ -56,6 +59,7 @@ while [[ $# -gt 0 ]]; do
     --rollback) ROLLBACK=1; shift ;;
     --inspect) INSPECT=1; shift ;;
     --skip-tests) SKIP_TESTS=1; shift ;;
+    --remote-tests) REMOTE_TESTS=1; shift ;;
     -h|--help) sed -n '2,30p' "$0"; exit 0 ;;
     *) die "unknown flag $1 (see --help)" ;;
   esac
@@ -85,7 +89,7 @@ SHA="current jar"
 DIR="$REMOTE_HOME/$ENV_NAME"
 
 if [[ "$ENV_NAME" == prod && $ROLLBACK -eq 0 && $RESTART_ONLY -eq 0 ]]; then
-  [[ $SKIP_TESTS -eq 0 ]] || die "prod is never deployed with --skip-tests."
+  [[ $SKIP_TESTS -eq 0 ]] || die "prod is never deployed with --skip-tests (use --remote-tests without Docker)."
   [[ -z "$(git -C "$ROOT" status --porcelain)" ]] || die "prod deploys need a clean working tree."
   git -C "$ROOT" fetch -q origin main
   git -C "$ROOT" merge-base --is-ancestor HEAD origin/main || die "HEAD is not on origin/main: push it first."
@@ -110,6 +114,17 @@ if [[ $ROLLBACK -eq 1 ]]; then
   REMOTE="set -e; cd $DIR; [ -f app.prev.jar ] || { echo 'no app.prev.jar to roll back to'; exit 1; }; mv app.jar app.swap.jar; mv app.prev.jar app.jar; mv app.swap.jar app.prev.jar; $RUN_CMD; $HEALTH_CMD"
   [[ $DRY_RUN -eq 1 ]] && { echo "$REMOTE"; exit 0; }
   ssh_run "$REMOTE" && ok "$ENV_NAME rolled back and healthy."; exit $?
+fi
+
+if [[ $REMOTE_TESTS -eq 1 && $RESTART_ONLY -eq 0 && $ROLLBACK -eq 0 ]]; then
+  [[ -z "$(git -C "$ROOT" status --porcelain)" ]] || die "--remote-tests needs a clean tree: it tests the commit, not your edits."
+  info "Running the test suite on $DEPLOY_SSH_HOST against $(git -C "$ROOT" rev-parse --short HEAD)"
+  if [[ $DRY_RUN -eq 0 ]]; then
+    git -C "$ROOT" archive --format=tar HEAD | ssh_run "rm -rf $REMOTE_HOME/ci && mkdir -p $REMOTE_HOME/ci && tar -x -C $REMOTE_HOME/ci"
+    ssh_run "docker run --rm --name pride-ci-tests --network host --memory 2g -v /var/run/docker.sock:/var/run/docker.sock       -v $REMOTE_HOME/ci:/src -v pride-m2:/root/.m2 -w /src maven:3.9-eclipse-temurin-21 mvn -B -q test"       || die "tests failed on the server; nothing deployed"
+    ok "All tests passed on the server."
+  fi
+  SKIP_TESTS=1
 fi
 
 if [[ $RESTART_ONLY -eq 0 ]]; then

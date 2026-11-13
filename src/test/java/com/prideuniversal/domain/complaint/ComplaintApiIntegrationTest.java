@@ -42,7 +42,7 @@ class ComplaintApiIntegrationTest extends AbstractIntegrationTest {
         String id = body(postAs(other, "/api/complaints", complaint("Neighbour's ticket"))).get("id").asText();
 
         String resident = loginAsNewResident();
-        assertThat(body(getAs(resident, "/api/complaints")).toString()).doesNotContain(id);
+        assertThat(body(getAs(resident, "/api/complaints").andExpect(status().isOk())).toString()).doesNotContain(id);
         getAs(resident, "/api/complaints/" + id).andExpect(status().isNotFound());
     }
 

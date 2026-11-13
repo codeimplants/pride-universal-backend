@@ -9,11 +9,16 @@ import java.util.UUID;
 
 public interface VendorRepository extends JpaRepository<Vendor, UUID> {
 
+    /**
+     * {@code q} must not be null: "" matches every name. A null parameter inside
+     * {@code lower()} has no column to infer its type from, so Hibernate binds it
+     * as bytea and Postgres rejects {@code lower(bytea)} (found by the test suite).
+     */
     @Query("""
             select v from Vendor v
             where v.active = true
               and (:type is null or v.serviceType = :type)
-              and (:q is null or lower(v.name) like lower(concat('%', :q, '%')))
+              and lower(v.name) like lower(concat('%', :q, '%'))
             order by v.approved desc, v.name asc
             limit 300
             """)
