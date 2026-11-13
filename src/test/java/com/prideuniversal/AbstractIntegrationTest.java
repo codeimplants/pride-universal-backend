@@ -1,5 +1,6 @@
 package com.prideuniversal;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.prideuniversal.common.Role;
 import com.prideuniversal.domain.flat.Flat;
@@ -19,7 +20,10 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
@@ -188,5 +192,39 @@ public abstract class AbstractIntegrationTest {
 
     protected static String bearer(String token) {
         return "Bearer " + token;
+    }
+
+    // =====================================================================
+    // Request helpers for the domain suites
+    // =====================================================================
+
+    protected ResultActions getAs(String token, String url) throws Exception {
+        return mockMvc.perform(get(url).header("Authorization", bearer(token)));
+    }
+
+    protected ResultActions postAs(String token, String url, Object body) throws Exception {
+        return mockMvc.perform(post(url).header("Authorization", bearer(token))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body == null ? "{}" : objectMapper.writeValueAsString(body)));
+    }
+
+    protected ResultActions putAs(String token, String url, Object body) throws Exception {
+        return mockMvc.perform(put(url).header("Authorization", bearer(token))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(body)));
+    }
+
+    protected ResultActions deleteAs(String token, String url) throws Exception {
+        return mockMvc.perform(delete(url).header("Authorization", bearer(token)));
+    }
+
+    protected JsonNode body(ResultActions result) throws Exception {
+        return objectMapper.readTree(result.andReturn().getResponse().getContentAsString());
+    }
+
+    /** A new flat in the given wing; returns its owner's mobile, ready to log in with. */
+    protected String residentOfWing(String wing) {
+        int n = nextSeq();
+        return createFlat(wing, String.valueOf(n), mobileFor(n)).getOwnerContact();
     }
 }

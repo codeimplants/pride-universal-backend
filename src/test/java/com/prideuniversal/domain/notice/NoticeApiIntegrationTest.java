@@ -396,12 +396,6 @@ class NoticeApiIntegrationTest extends AbstractIntegrationTest {
         return ids;
     }
 
-    /** Creates a flat in the given wing and returns its owner's mobile. */
-    private String residentOfWing(String wing) {
-        int n = nextSeq();
-        return createFlat(wing, String.valueOf(n), mobileFor(n)).getOwnerContact();
-    }
-
     /**
      * A published, society-wide general notice, with every defaultable field
      * sent explicitly.
