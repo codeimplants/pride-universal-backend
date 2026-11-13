@@ -120,8 +120,11 @@ if [[ $REMOTE_TESTS -eq 1 && $RESTART_ONLY -eq 0 && $ROLLBACK -eq 0 ]]; then
   [[ -z "$(git -C "$ROOT" status --porcelain)" ]] || die "--remote-tests needs a clean tree: it tests the commit, not your edits."
   info "Running the test suite on $DEPLOY_SSH_HOST against $(git -C "$ROOT" rev-parse --short HEAD)"
   if [[ $DRY_RUN -eq 0 ]]; then
-    git -C "$ROOT" archive --format=tar HEAD | ssh_run "rm -rf $REMOTE_HOME/ci && mkdir -p $REMOTE_HOME/ci && tar -x -C $REMOTE_HOME/ci"
-    ssh_run "docker run --rm --name pride-ci-tests --network host --memory 2g -v /var/run/docker.sock:/var/run/docker.sock       -v $REMOTE_HOME/ci:/src -v pride-m2:/root/.m2 -w /src maven:3.9-eclipse-temurin-21 mvn -B -q test"       || die "tests failed on the server; nothing deployed"
+    # The source is streamed into the container, never unpacked on the host: nothing is left behind,
+    # and nothing root-owned. Only the Maven cache (volume pride-m2) persists between runs.
+    git -C "$ROOT" archive --format=tar HEAD | ssh_run "docker run -i --rm --name pride-ci-tests --network host \
+--memory 2g -v /var/run/docker.sock:/var/run/docker.sock -v pride-m2:/root/.m2 maven:3.9-eclipse-temurin-21 \
+sh -c 'mkdir -p /src && tar -x -C /src && cd /src && mvn -B -q test'" || die "tests failed on the server; nothing deployed"
     ok "All tests passed on the server."
   fi
   SKIP_TESTS=1
