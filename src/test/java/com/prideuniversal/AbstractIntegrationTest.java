@@ -52,7 +52,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * comes from each test allocating its own fixtures instead, which also keeps
  * the OTP rate limiters (per mobile number) out of each other's way.
  */
-@SpringBootTest
+@SpringBootTest(properties = "app.otp.dev-mode=true")
 @AutoConfigureMockMvc
 public abstract class AbstractIntegrationTest {
 

@@ -22,6 +22,14 @@ public interface SmsSender {
     /** Identifier used for logging and health reporting. */
     String providerName();
 
+    /**
+     * A fixed code every OTP should use instead of a random one, for test
+     * environments (the Code Implants convention is 123456). Empty in production.
+     */
+    default java.util.Optional<String> fixedCode() {
+        return java.util.Optional.empty();
+    }
+
     class SmsDeliveryException extends RuntimeException {
         public SmsDeliveryException(String message) {
             super(message);

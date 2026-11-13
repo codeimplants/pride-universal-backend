@@ -31,6 +31,18 @@ public class GlobalExceptionHandler {
                 .body(ApiError.of(ex.getCode(), ex.getMessage()));
     }
 
+    /**
+     * The SMS could not be handed to the provider. The OTP row was rolled back with
+     * the request, so the caller can simply try again; no cooldown was started.
+     */
+    @ExceptionHandler(com.prideuniversal.sms.SmsSender.SmsDeliveryException.class)
+    public ResponseEntity<ApiError> handleSmsDelivery(com.prideuniversal.sms.SmsSender.SmsDeliveryException ex) {
+        log.error("SMS delivery failed: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(ApiError.of(
+                "sms_unavailable",
+                "We couldn't send the code right now. Please try again in a minute."));
+    }
+
     /** Bean-validation failures on {@code @Valid} request bodies. */
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiError> handleValidation(MethodArgumentNotValidException ex) {

@@ -26,9 +26,8 @@ public class ConsoleSmsSender implements SmsSender {
                 ================= DEV SMS (NOT SENT) =================
                   To   : +91 {}
                   OTP  : {}
-                  This provider only logs. Set app.sms.provider=msg91
-                  with real credentials before going anywhere near
-                  production.
+                  This provider only logs. Deployed environments use
+                  app.sms.provider=messaging (Code Implants Messaging).
                 ======================================================
                 """, mobile, otp);
     }

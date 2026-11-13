@@ -110,7 +110,8 @@ public class OtpService {
                     "An OTP was just sent. Please wait before requesting another.");
         }
 
-        String code = generateCode();
+        // A test environment's sender may pin the code (123456); production never does.
+        String code = smsSender.fixedCode().orElseGet(this::generateCode);
 
         OtpRequest request = new OtpRequest();
         request.setMobile(mobile);

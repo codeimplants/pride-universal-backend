@@ -53,7 +53,7 @@ curl -X POST http://localhost:8080/api/auth/otp/send \
   -d '{"mobile":"9876543210"}'
 
 # The OTP appears in the app console AND in the response's dev_otp field
-# (dev only — app.otp.dev-mode=true)
+# (the dev profile turns on app.otp.dev-mode; it is off by default)
 
 curl -X POST http://localhost:8080/api/auth/otp/verify \
   -H 'Content-Type: application/json' \
@@ -80,24 +80,24 @@ are overridable by environment variable.
 | `DB_URL` | `jdbc:postgresql://localhost:5432/pride_universal` | Database |
 | `DB_USER` / `DB_PASSWORD` | `pride` / `pride_dev_password` | Credentials |
 | `JWT_SECRET` | dev placeholder | **Must be ≥32 bytes and changed in production** |
-| `OTP_DEV_MODE` | `true` | Returns the OTP in the API response. **Must be `false` in production.** |
-| `SMS_PROVIDER` | `console` | `console` \| `msg91` |
-| `MSG91_AUTH_KEY` | — | Required when `SMS_PROVIDER=msg91` |
-| `MSG91_TEMPLATE_ID` | — | DLT-approved template id |
+| `OTP_DEV_MODE` | `false` | Returns the OTP in the API response (the `dev` profile turns it on). Refused at startup with a live messaging key. |
+| `SMS_PROVIDER` | `console` | `console` (logs the code) \| `messaging` (Code Implants Messaging) |
+| `MESSAGING_BASE_URL` | `https://msg.codeimplants.com` | `https://dev.msg.codeimplants.com` on dev |
+| `MESSAGING_API_KEY` | — | Required with `SMS_PROVIDER=messaging`. Written into the env file by messaging-backend's `connect-app.sh` |
+| `MESSAGING_FIXED_CODE` | — | Dev only: `123456`. Refused with a live (`sk_live_`) key |
 | `CORS_ORIGINS` | localhost dev ports | Comma-separated allowed origins |
 
 ### Before going to production
 
 - [ ] `JWT_SECRET` set to real random material (`openssl rand -base64 48`)
-- [ ] `OTP_DEV_MODE=false`
-- [ ] `SMS_PROVIDER=msg91` with DLT-registered template and sender ID
+- [ ] `OTP_DEV_MODE` unset or `false`
+- [ ] `SMS_PROVIDER=messaging` with the prod `MESSAGING_API_KEY` and no `MESSAGING_FIXED_CODE`
 - [ ] `SPRING_PROFILES_ACTIVE` **not** set to `dev`
 - [ ] `CORS_ORIGINS` restricted to the real app origins
 
-> **Note on SMS in India:** MSG91 requires TRAI DLT registration — an approved
-> sender ID and message template registered against the society's legal entity.
-> Allow days-to-weeks. Until that lands, `SMS_PROVIDER=console` keeps everything
-> else buildable.
+> **SMS:** OTPs go through Code Implants Messaging (`msg.codeimplants.com`), which
+> holds the shared 2Factor account and its DLT-approved OTP template. Pride
+> Universal needs no DLT registration of its own.
 
 ---
 

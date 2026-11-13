@@ -1,0 +1,5 @@
+# Local development (SPRING_PROFILES_ACTIVE=dev): DevDataSeeder runs and the OTP is
+# returned in the send response as dev_otp. Never on a deployed environment.
+app:
+  otp:
+    dev-mode: true

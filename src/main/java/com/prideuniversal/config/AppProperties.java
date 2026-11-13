@@ -37,8 +37,12 @@ public record AppProperties(
             boolean devMode
     ) {}
 
-    public record Sms(String provider, Msg91 msg91) {
-        public record Msg91(String authKey, String templateId, String senderId) {}
+    /**
+     * {@code provider}: {@code console} (local; logs the code) or {@code messaging}
+     * (Code Implants Messaging; every deployed environment).
+     */
+    public record Sms(String provider, Messaging messaging) {
+        public record Messaging(String baseUrl, String apiKey, String fixedCode) {}
     }
 
     public record Storage(String provider, Local local, int maxFileSizeMb) {
