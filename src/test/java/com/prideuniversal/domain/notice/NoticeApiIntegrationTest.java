@@ -24,12 +24,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * The specification for entry 008. Every test here fails until the Notice
- * slice is built, and each one pins one rule. When a test fails, read its
- * {@code @DisplayName} before reading its body — the name is the rule.
- *
- * <p>Same structure as {@code FlatApiIntegrationTest}; deliberately different
- * rules. The sections that most differ from Flat are the first two.
+ * The notice board's rules, one per test. When a test fails, read its
+ * {@code @DisplayName} first — the name is the rule.
  *
  * <p>Isolation note: these tests share one database and one notice board, so
  * no test asserts on the <em>whole</em> list. Each asserts only on notices it
@@ -407,9 +403,8 @@ class NoticeApiIntegrationTest extends AbstractIntegrationTest {
     }
 
     /**
-     * A published, society-wide general notice. Every field the request has
-     * an opinion about is sent explicitly, so no test depends on how you
-     * decide to default a missing one.
+     * A published, society-wide general notice, with every defaultable field
+     * sent explicitly.
      */
     private Map<String, Object> noticeMap(String title) {
         Map<String, Object> body = new LinkedHashMap<>();

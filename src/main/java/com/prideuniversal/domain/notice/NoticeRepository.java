@@ -2,22 +2,23 @@ package com.prideuniversal.domain.notice;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.UUID;
 
+/**
+ * Both lists use the board's order — pinned first, then newest — which is exactly
+ * {@code idx_notice_pinned}. Visibility is filtered in the query, so drafts never
+ * leave the database for a reader who may not see them.
+ *
+ * <p>Capped at 200: the board is a noticeboard, not an archive.
+ */
 public interface NoticeRepository extends JpaRepository<Notice, UUID> {
 
-    // TODO(entry 008): the queries the notice board needs.
-    //
-    // The list endpoint has two audiences (see NoticeService.list()), and both
-    // want the same order: pinned first, then newest first. The schema already
-    // has an index built for exactly that order - look at idx_notice_pinned in
-    // V1__initial_schema.sql before you name your methods.
-    //
-    // FlatRepository shows both styles: derived query names, and @Query when a
-    // name would be unreadable. Pick whichever reads better; you will have to
-    // defend the choice.
-    //
-    // Filter in the query, not in Java. Loading every notice and dropping
-    // drafts with .stream().filter(...) would pass the tests - and would also
-    // ship every draft out of the database on every resident's request.
+    /** Writers: everything, drafts and every wing included. */
+    List<Notice> findTop200ByOrderByPinnedDescCreatedDateDesc();
+
+    /** Readers: published notices addressed to one of the given scopes. */
+    List<Notice> findTop200ByPublishedTrueAndScopeInOrderByPinnedDescCreatedDateDesc(
+            Collection<NoticeScope> scopes);
 }

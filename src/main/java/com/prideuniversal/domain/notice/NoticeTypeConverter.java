@@ -7,9 +7,8 @@ import jakarta.persistence.Converter;
  * Persists {@link NoticeType} as its lowercase code, so {@code ck_notice_type}
  * accepts it. Same shape as {@code BillStatusConverter}.
  *
- * <p>This and {@link NoticeScopeConverter} make five converters of one shape.
- * {@code BillStatusConverter}'s javadoc said to extract a shared base at the
- * fourth — that refactor is step 5 of the entry 008 exercise.
+ * <p>One of five converters of this shape; a shared {@code CodedEnumConverter<E>}
+ * base would remove the repetition.
  */
 @Converter(autoApply = true)
 public class NoticeTypeConverter implements AttributeConverter<NoticeType, String> {

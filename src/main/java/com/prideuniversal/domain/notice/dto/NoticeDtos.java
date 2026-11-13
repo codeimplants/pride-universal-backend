@@ -3,6 +3,8 @@ package com.prideuniversal.domain.notice.dto;
 import com.prideuniversal.domain.notice.Notice;
 import com.prideuniversal.domain.notice.NoticeScope;
 import com.prideuniversal.domain.notice.NoticeType;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -11,49 +13,52 @@ import java.util.UUID;
 /**
  * Request and response shapes for the notice endpoints.
  *
- * <p>The fields are declared because they are the wire contract the tests are
- * written against. What is left to you is marked {@code TODO(entry 008)}.
- *
- * <p>There is one response record here, where {@code FlatDtos} has two. That is
- * not an oversight — work out why the split does not carry over, and put the
- * answer in your LEARNING-LOG entry.
+ * <p>One response record, where {@code FlatDtos} has two: a notice carries no
+ * personal data, and whether a reader may see it at all is decided by the service
+ * before any DTO is built. There is no partial view to protect.
  */
 public final class NoticeDtos {
 
     private NoticeDtos() {}
 
     /**
-     * Used for both create and update; {@code version} is null on create and
-     * required on update, exactly as in {@code FlatRequest}.
+     * Create and update; {@code version} is null on create and required on update.
      *
-     * <p>TODO(entry 008): bean validation. {@code blankTitleIsAFieldError}
-     * expects a missing or blank title to come back as a 400 with
-     * {@code field_errors.title}. Content is required too. Take the length
-     * limits from the column definitions in {@link Notice}, not from guesses —
-     * a limit looser than the column turns a 400 into a database error.
+     * <p>Defaults for absent fields: a null {@code isPublished} means <b>draft</b> —
+     * the schema defaults to published, but a message to every flat should go out
+     * only when someone said so. Null {@code noticeType} is {@code general}, null
+     * {@code scope} is {@code both}.
      *
-     * <p>TODO(entry 008): decide what a <em>null</em> {@code isPublished}
-     * means, and say so in this comment. The schema defaults the column to
-     * TRUE; ask yourself whether that is the safe default for a message that
-     * goes to every resident. Do the same for null {@code noticeType} and
-     * {@code scope}. (The tests always send all three, so the choice is yours.)
-     *
-     * <p>Note what is absent: {@code publishedBy} and {@code publishedById}.
-     * Keep it that way — see {@code authorComesFromTheTokenNotTheBody}.
+     * <p>There is no {@code publishedBy} / {@code publishedById}: the author comes
+     * from the caller's token. A request that could carry an author would let anyone
+     * post in the chairman's name.
      */
     public record NoticeRequest(
+
+            @NotBlank(message = "Title is required")
+            @Size(max = 255, message = "Title is too long")
             String title,
+
+            @NotBlank(message = "Content is required")
+            @Size(max = 20_000, message = "Content is too long")
             String content,
+
             NoticeType noticeType,
+
             NoticeScope scope,
+
             Boolean isPublished,
+
             boolean pinned,
+
             LocalDate meetingDate,
+
+            @Size(max = 255, message = "Venue is too long")
             String meetingVenue,
+
             Long version
     ) {}
 
-    /** What every reader gets. */
     public record NoticeResponse(
             UUID id,
             String title,
@@ -63,6 +68,7 @@ public final class NoticeDtos {
             String publishedBy,
             boolean isPublished,
             boolean pinned,
+            String attachmentUrl,
             LocalDate meetingDate,
             String meetingVenue,
             Instant createdDate,
@@ -71,8 +77,21 @@ public final class NoticeDtos {
             Long version
     ) {
         public static NoticeResponse from(Notice notice) {
-            // TODO(entry 008): map the entity. FlatSummary.from() is the model.
-            throw new UnsupportedOperationException("TODO(entry 008): NoticeResponse.from");
+            return new NoticeResponse(
+                    notice.getId(),
+                    notice.getTitle(),
+                    notice.getContent(),
+                    notice.getNoticeType(),
+                    notice.getScope(),
+                    notice.getPublishedBy(),
+                    notice.isPublished(),
+                    notice.isPinned(),
+                    notice.getAttachmentUrl(),
+                    notice.getMeetingDate(),
+                    notice.getMeetingVenue(),
+                    notice.getCreatedDate(),
+                    notice.getUpdatedDate(),
+                    notice.getVersion());
         }
     }
 }

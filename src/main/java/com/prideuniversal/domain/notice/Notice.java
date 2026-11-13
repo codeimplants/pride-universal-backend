@@ -13,9 +13,7 @@ import java.util.UUID;
 /**
  * A notice on the society board: circulars, meeting summons, emergencies.
  *
- * <p>Given to you complete for entry 008 — the mapping is the pattern you have
- * already seen in {@code Flat} and {@code MaintenanceBill}. The exercise is the
- * rules around it, which live in {@code NoticeService}.
+ * <p>The rules around it live in {@code NoticeService}.
  *
  * <h2>The author is two columns, on purpose</h2>
  * {@code published_by} is the author's name <em>as it was when they posted</em>;
@@ -29,8 +27,8 @@ import java.util.UUID;
  * notice if the account is removed).
  *
  * <h2>Nothing references a notice</h2>
- * Unlike {@code Flat}, no other table has a foreign key to {@code notice}.
- * Keep that in mind when you decide what DELETE should do.
+ * Unlike {@code Flat}, no other table has a foreign key to {@code notice}, so
+ * DELETE removes the row.
  */
 @Entity
 @Table(name = "notice")

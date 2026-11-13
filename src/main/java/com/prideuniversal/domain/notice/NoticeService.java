@@ -1,38 +1,49 @@
 package com.prideuniversal.domain.notice;
 
+import com.prideuniversal.auth.AuthPrincipal;
+import com.prideuniversal.common.ApiException;
+import com.prideuniversal.common.Role;
+import com.prideuniversal.domain.flat.Flat;
 import com.prideuniversal.domain.flat.FlatRepository;
 import com.prideuniversal.domain.notice.dto.NoticeDtos.NoticeRequest;
 import com.prideuniversal.domain.notice.dto.NoticeDtos.NoticeResponse;
+import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 /**
- * The notice board. <b>Entry 008 — this class is yours.</b>
+ * The society notice board.
  *
- * <p>Copy the <em>structure</em> of {@code FlatService}: authorisation here
- * rather than on the controller, {@code readOnly} reads, the two-layer
- * optimistic lock on update, an {@code apply()} that copies the request field
- * by field. Do <em>not</em> copy its rules — almost every one of them is
- * different here, and each difference is pinned by a test in
- * {@code NoticeApiIntegrationTest}.
+ * <h2>Who sees what</h2>
+ * The communications roles ({@link Role#COMMS}) see everything: drafts, and every
+ * wing's notices, because they edit them. Everyone else sees published notices
+ * addressed to both wings or to their own flat's wing; a caller with no flat sees
+ * society-wide notices only. That rule lives in one place, {@link Audience}, used
+ * by the list (as a query) and by single reads (as a check), so they cannot drift.
  *
- * <p>Every method below throws until you implement it, so the tests fail with
- * a 500 rather than refusing to compile. Delete {@link #todo} when you are
- * done; if it still has callers, you are not done.
+ * <h2>Hidden is 404</h2>
+ * A notice the caller may not see answers 404, not 403. For a flat, a 403 is fine
+ * because the directory already lists every flat. For an unannounced notice, its
+ * existence is the secret.
+ *
+ * <h2>Delete is a real delete</h2>
+ * Nothing references a notice, so there is no ledger to protect (unlike a flat).
+ * Unpublishing is how a notice is withdrawn while keeping it.
  */
 @Service
 public class NoticeService {
 
-    // TODO(entry 008): who may write notices?
-    // It is not FlatService.CAN_EDIT. Read the permission groups at the bottom
-    // of Role.java - one of them was made for this. treasurerCannotPostNotices
-    // is the test that tells you whether you picked the right one.
+    /** {@link Role#COMMS}: the treasurer manages money, not the society's voice. */
+    private static final String CAN_WRITE = "hasAnyRole('ADMIN','CHAIRMAN','SECRETARY','COMMITTEE_MEMBER')";
 
     private final NoticeRepository noticeRepository;
-
-    /** You will need it: the caller's wing is not in their token. */
     private final FlatRepository flatRepository;
 
     public NoticeService(NoticeRepository noticeRepository, FlatRepository flatRepository) {
@@ -44,96 +55,117 @@ public class NoticeService {
     // Reads
     // =====================================================================
 
-    /**
-     * The board as the caller is allowed to see it: pinned first, then newest.
-     *
-     * <p>Visibility rules:
-     * <ul>
-     *   <li>People who may <em>write</em> notices see everything — drafts, and
-     *       every wing's notices. They need to, to edit them.</li>
-     *   <li>Everyone else sees only <b>published</b> notices addressed to
-     *       {@code BOTH} wings or to <b>the wing of their own flat</b>. A caller
-     *       with no flat (a security guard, a treasurer who lives elsewhere)
-     *       sees {@code BOTH} only.</li>
-     * </ul>
-     *
-     * <p>{@code AuthPrincipal} carries a {@code flatId}, not a wing.
-     * {@link NoticeScope#forWing} turns a wing code into a scope.
-     */
+    @Transactional(readOnly = true)
     public List<NoticeResponse> list() {
-        throw todo("list");
+        Audience audience = audienceOf(AuthPrincipal.current());
+        List<Notice> notices = audience.everything()
+                ? noticeRepository.findTop200ByOrderByPinnedDescCreatedDateDesc()
+                : noticeRepository.findTop200ByPublishedTrueAndScopeInOrderByPinnedDescCreatedDateDesc(audience.scopes());
+        return notices.stream().map(NoticeResponse::from).toList();
     }
 
-    /**
-     * One notice, if the caller is allowed to see it.
-     *
-     * <p>A notice the caller may not see is a <b>404, not a 403</b>
-     * ({@code draftIsNotFoundToAResident}). {@code FlatService.detail()} made
-     * the opposite choice for flats, and both are right — work out why before
-     * you write this. (Hint: what does a 403 confirm, and is that a secret for
-     * a flat? For a draft?)
-     *
-     * <p>Whatever you write here and in {@link #list()} must agree on what
-     * "visible" means. If they each carry their own copy of the rule, they
-     * will drift. One definition, used twice.
-     */
+    @Transactional(readOnly = true)
     public NoticeResponse get(UUID id) {
-        throw todo("get");
+        Notice notice = noticeRepository.findById(id)
+                .filter(audienceOf(AuthPrincipal.current())::canSee)
+                .orElseThrow(() -> ApiException.notFound("Notice", id));
+        return NoticeResponse.from(notice);
     }
 
     // =====================================================================
     // Writes
     // =====================================================================
 
-    /**
-     * Posts a notice.
-     *
-     * <ul>
-     *   <li>The author — {@code publishedBy} and {@code publishedById} — comes
-     *       from {@code AuthPrincipal}, never from the request. A request
-     *       record that can carry an author is a forgery API.</li>
-     *   <li>An AGM or SGM notice without a meeting date is a 400
-     *       ({@link NoticeType#isMeeting}). Same idea as
-     *       {@code FlatService.requireTenantNamed()} — except here there is no
-     *       database constraint behind it, so your check is the only one.</li>
-     * </ul>
-     */
+    @PreAuthorize(CAN_WRITE)
+    @Transactional
     public NoticeResponse create(NoticeRequest request) {
-        throw todo("create");
+        AuthPrincipal author = AuthPrincipal.current();
+        Notice notice = new Notice();
+        notice.setPublishedBy(author.displayName());
+        notice.setPublishedById(author.userId());
+        apply(request, notice);
+        return NoticeResponse.from(noticeRepository.save(notice));
     }
 
     /**
-     * Edits a notice — including publishing a draft, by sending
-     * {@code is_published: true}.
-     *
-     * <p>Optimistic locking exactly as {@code FlatService.update()}: version
-     * required (400 without), stale version is a 409, and remember entry 006's
-     * bug about which version the response must carry.
-     *
-     * <p>Decide whether editing someone else's notice changes its author. The
-     * tests do not force an answer; write down the one you chose.
+     * Edits a notice, including publishing a draft or pinning it. The original
+     * author stays the author: a notice records who issued it, and a typo fix by
+     * another committee member doesn't change that.
      */
+    @PreAuthorize(CAN_WRITE)
+    @Transactional
     public NoticeResponse update(UUID id, NoticeRequest request) {
-        throw todo("update");
+        Notice notice = noticeRepository.findById(id)
+                .orElseThrow(() -> ApiException.notFound("Notice", id));
+
+        if (request.version() == null) {
+            throw ApiException.badRequest(
+                    "version is required when updating a notice. Re-fetch it and send the version it returned.");
+        }
+        if (!Objects.equals(notice.getVersion(), request.version())) {
+            throw new OptimisticLockingFailureException("Notice " + id + " was modified by someone else");
+        }
+
+        apply(request, notice);
+        // saveAndFlush so the response carries the incremented version (LEARNING-LOG entry 006).
+        return NoticeResponse.from(noticeRepository.saveAndFlush(notice));
     }
 
-    /**
-     * Removes a notice. Afterwards it must be gone for everyone, including
-     * the committee ({@code committeeDeletesANotice}).
-     *
-     * <p>{@code FlatService.deactivate()} explains why a flat can never be
-     * deleted. Check whether that reason holds for a notice — see the javadoc
-     * on {@link Notice}.
-     */
+    @PreAuthorize(CAN_WRITE)
+    @Transactional
     public void delete(UUID id) {
-        throw todo("delete");
+        Notice notice = noticeRepository.findById(id)
+                .orElseThrow(() -> ApiException.notFound("Notice", id));
+        noticeRepository.delete(notice);
     }
 
     // =====================================================================
     // Internals
     // =====================================================================
 
-    private static UnsupportedOperationException todo(String method) {
-        return new UnsupportedOperationException("TODO(entry 008): NoticeService." + method);
+    private void apply(NoticeRequest request, Notice notice) {
+        NoticeType type = request.noticeType() == null ? NoticeType.GENERAL : request.noticeType();
+        if (type.isMeeting() && request.meetingDate() == null) {
+            // No database constraint backs this; this check is the only one.
+            throw ApiException.badRequest("An AGM or SGM notice must give the meeting date.");
+        }
+
+        notice.setTitle(request.title().trim());
+        notice.setContent(request.content().trim());
+        notice.setNoticeType(type);
+        notice.setScope(request.scope() == null ? NoticeScope.BOTH : request.scope());
+        notice.setPublished(Boolean.TRUE.equals(request.isPublished()));
+        notice.setPinned(request.pinned());
+        notice.setMeetingDate(request.meetingDate());
+        notice.setMeetingVenue(blankToNull(request.meetingVenue()));
+    }
+
+    /** The caller's wing is not in the token; it is one indexed lookup by flat id. */
+    private Audience audienceOf(AuthPrincipal caller) {
+        if (Role.COMMS.contains(caller.role())) {
+            return Audience.EVERYTHING;
+        }
+        Set<NoticeScope> scopes = EnumSet.of(NoticeScope.BOTH);
+        if (caller.flatId() != null) {
+            flatRepository.findById(caller.flatId())
+                    .map(Flat::getWing)
+                    .flatMap(NoticeScope::forWing)
+                    .ifPresent(scopes::add);
+        }
+        return new Audience(false, scopes);
+    }
+
+    /** The one definition of which notices a caller may see. */
+    record Audience(boolean everything, Set<NoticeScope> scopes) {
+
+        static final Audience EVERYTHING = new Audience(true, EnumSet.allOf(NoticeScope.class));
+
+        boolean canSee(Notice notice) {
+            return everything || (notice.isPublished() && scopes.contains(notice.getScope()));
+        }
+    }
+
+    private static String blankToNull(String value) {
+        return (value == null || value.isBlank()) ? null : value.trim();
     }
 }
