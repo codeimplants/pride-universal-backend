@@ -24,6 +24,12 @@ psql_dev() { docker exec pride-postgres psql -U pride_admin -d pride_dev -qAt -c
 ADMIN=9999900001; OWNER=9999900002; GUARD=9999900003
 psql_dev "insert into app_user (mobile, display_name, role) values ('$ADMIN','Smoke Admin','admin') on conflict (mobile) do nothing" >/dev/null
 psql_dev "delete from otp_request where mobile like '99999000%'" >/dev/null
+# Re-runnable: an account keeps the flat it was first linked to, and each run adds a new flat for
+# $OWNER. Retire the earlier smoke flats and the owner's account, so this run provisions the owner
+# against this run's flat, the way a first sign-in does. (Deleting an account is safe by design:
+# every reference to app_user cascades or is set null, which account deletion relies on.)
+psql_dev "update flat set is_active = false where owner_contact = '$OWNER'" >/dev/null
+psql_dev "delete from app_user where mobile = '$OWNER'" >/dev/null
 
 echo "== auth"
 req POST /api/auth/otp/send "" '{"mobile":"9999900099"}'; check "unknown number refused" 404 "$CODE"
@@ -35,7 +41,8 @@ req GET /api/settings/A "$A"; V=$(echo "$BODY" | jq .version)
 req PUT /api/settings/A "$A" "{\"monthly_maintenance\":2500,\"maintenance_due_day\":10,\"society_name\":\"Pride Universal (dev)\",\"upi_id\":\"pride@upi\",\"version\":$V}"
 check "admin sets wing A amounts" 200 "$CODE"
 FLATNO="S$(date +%H%M%S)"
-req POST /api/flats "$A" "{\"wing\":\"A\",\"flat_number\":\"$FLATNO\",\"floor\":1,\"owner_name\":\"Smoke Owner\",\"owner_contact\":\"$OWNER\"}"
+PLATE="MH14SM${FLATNO: -4}"   # earlier smoke flats are retired above, so this plate is the smoke flat's alone
+req POST /api/flats "$A" "{\"wing\":\"A\",\"flat_number\":\"$FLATNO\",\"floor\":1,\"owner_name\":\"Smoke Owner\",\"owner_contact\":\"$OWNER\",\"four_wheeler\":true,\"four_wheeler_count\":1,\"four_wheeler_numbers\":\"MH 14 SM ${FLATNO: -4}\"}"
 check "admin adds a flat" 201 "$CODE"; FLAT_ID=$(echo "$BODY" | jq -r .id)
 Y=$(date +%Y); M=$(date +%-m)
 req POST /api/bills/generate "$A" "{\"year\":$Y,\"month\":$M}"; check "generate bills" 200 "$CODE"
@@ -78,6 +85,28 @@ check "resident recommends a vendor, unverified" false "$(echo "$BODY" | jq .app
 req POST /api/marketplace "$R" '{"title":"Smoke sofa","category":"furniture","listing_type":"give_away","price":900}'
 check "giveaway is free" 0 "$(echo "$BODY" | jq .price)"
 
+echo "== festival funds, gate vehicles, businesses, notifications"
+# The poster's numbers: 7,680 + 1,76,642 - 1,07,208 = 77,114, then Kojagiri spends 42,401 of it.
+req POST /api/events "$A" '{"name":"Smoke Festival","start_date":"2090-09-14","opening_balance":7680,"is_published":true}'
+check "committee opens an event fund" 201 "$CODE"; EV1=$(echo "$BODY" | jq -r .id)
+req POST "/api/events/$EV1/entries" "$A" '{"type":"income","head":"vargani","amount":176642}'
+req POST "/api/events/$EV1/entries" "$A" '{"type":"expense","head":"mahaprasad","amount":107208}'
+req POST /api/events "$A" "{\"name\":\"Smoke Kojagiri\",\"start_date\":\"2090-10-25\",\"carried_from_id\":\"$EV1\",\"is_published\":true}"
+EV2=$(echo "$BODY" | jq -r .id)
+req POST "/api/events/$EV2/entries" "$A" '{"type":"expense","head":"Pav bhaji","amount":42401}'
+req GET "/api/events/$EV2" "$R"; check "member reads it" 200 "$CODE"
+check "carried balance closes at 34,713" 34713 "$(echo "$BODY" | jq '.closing_balance | floor')"
+req GET /api/events "$G"; check "guards are not shown festival money" 403 "$CODE"
+req GET "/api/vehicles/lookup?plate=$(echo "$PLATE" | tr 'A-Z' 'a-z')" "$G"; check "guard looks up a plate" 200 "$CODE"
+check "plate found at the smoke flat" "\"$FLATNO\"" "$(echo "$BODY" | jq '.matches[0].flat_number')"
+req GET "/api/vehicles/lookup?plate=MH12AB1234" "$R"; check "residents cannot look up plates" 403 "$CODE"
+req POST /api/businesses "$R" '{"name":"Smoke Tiffins","category":"home_food","contact":"9123456780","delivers":true}'
+check "resident lists a business, pending" '"pending"' "$(echo "$BODY" | jq .status)"; BIZ=$(echo "$BODY" | jq -r .id)
+req POST "/api/businesses/$BIZ/review" "$A" '{"status":"rejected","note":"smoke test"}'; check "committee reviews it" 200 "$CODE"
+req POST /api/notifications "$A" "{\"title\":\"Smoke\",\"body\":\"Smoke message\",\"audience\":\"flat\",\"audience_value\":\"A-$FLATNO\"}"
+check "admin writes to one flat" 1 "$(echo "$BODY" | jq .recipients)"
+req GET /api/notifications "$R"; check "it is in the resident's inbox" true "$(echo "$BODY" | jq 'map(.title) | index("Smoke") != null')"
+
 echo "== Nexus console"
 TOKEN=$(grep -E '^ADMIN_SERVICE_TOKEN=' ~/pride/dev.env | cut -d= -f2-)
 CODE=$(curl -s -o /dev/null -w '%{http_code}' -m 10 "$B/api/admin/users" -H "Authorization: Bearer $A"); check "admin JWT refused on /api/admin" 401 "$CODE"
@@ -87,4 +116,7 @@ unset TOKEN
 
 echo "== tidy"
 psql_dev "update notice set is_published = false where title = 'Smoke notice'" >/dev/null
+psql_dev "delete from member_business where name = 'Smoke Tiffins'" >/dev/null
+psql_dev "delete from society_event where name = 'Smoke Kojagiri'" >/dev/null
+psql_dev "delete from society_event where name = 'Smoke Festival'" >/dev/null
 echo "passed $PASS, failed $FAIL"
