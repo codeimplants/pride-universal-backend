@@ -38,15 +38,18 @@ public class DevDataSeeder implements CommandLineRunner {
     private final FlatRepository flatRepository;
     private final UserRepository userRepository;
     private final WingSettingsRepository wingSettingsRepository;
+    private final DevDemoData demoData;
     private final String adminMobile;
 
     public DevDataSeeder(FlatRepository flatRepository,
                          UserRepository userRepository,
                          WingSettingsRepository wingSettingsRepository,
+                         DevDemoData demoData,
                          @Value("${app.dev.admin-mobile:9850929698}") String adminMobile) {
         this.flatRepository = flatRepository;
         this.userRepository = userRepository;
         this.wingSettingsRepository = wingSettingsRepository;
+        this.demoData = demoData;
         this.adminMobile = adminMobile;
     }
 
@@ -59,6 +62,7 @@ public class DevDataSeeder implements CommandLineRunner {
 
         if (flatRepository.count() > 0) {
             log.info("Dev data already present, skipping seed.");
+            demoData.seed();   // guarded per part; adds the newer screens' demo data once
             return;
         }
 
@@ -86,6 +90,8 @@ public class DevDataSeeder implements CommandLineRunner {
             admin.setActive(true);
             userRepository.save(admin);
         }
+
+        demoData.seed();
 
         log.info("""
 

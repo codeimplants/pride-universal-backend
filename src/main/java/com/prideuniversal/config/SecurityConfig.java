@@ -95,6 +95,9 @@ public class SecurityConfig {
                     .hasAnyRole("ADMIN", "CHAIRMAN")
                 .requestMatchers("/api/transactions/**")
                     .hasAnyRole("ADMIN", "CHAIRMAN", "SECRETARY", "TREASURER")
+                // Plate lookup answers with residents' mobile numbers: the gate and the committee only.
+                .requestMatchers("/api/vehicles/**")
+                    .hasAnyRole("ADMIN", "CHAIRMAN", "SECRETARY", "TREASURER", "COMMITTEE_MEMBER", "SECURITY")
                 .requestMatchers("/actuator/**")
                     .hasRole("ADMIN")
 
