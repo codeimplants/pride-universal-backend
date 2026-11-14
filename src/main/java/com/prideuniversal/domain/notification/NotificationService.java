@@ -24,7 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
-import java.text.NumberFormat;
+import java.math.RoundingMode;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.EnumSet;
@@ -331,11 +331,30 @@ public class NotificationService {
         return new String[] {t[0], String.format(t[1], flat, amount, count, count == 1 ? "bill" : "bills")};
     }
 
-    /** 176642 → "1,76,642". */
+    /**
+     * 176642 → "1,76,642": the last three digits, then pairs. Written out because java.text.DecimalFormat
+     * has a single grouping size and prints en-IN as "176,642" (found by the test suite, on the server).
+     */
     static String indian(BigDecimal amount) {
-        NumberFormat f = NumberFormat.getNumberInstance(Locale.forLanguageTag("en-IN"));
-        f.setMaximumFractionDigits(2);
-        return f.format(amount);
+        BigDecimal a = amount.setScale(2, RoundingMode.HALF_UP).stripTrailingZeros();
+        String plain = a.abs().toPlainString();
+        int dot = plain.indexOf('.');
+        String whole = dot < 0 ? plain : plain.substring(0, dot);
+        String fraction = dot < 0 ? "" : plain.substring(dot);
+        StringBuilder out = new StringBuilder();
+        int head = whole.length() - 3;
+        if (head <= 0) {
+            out.append(whole);
+        } else {
+            for (int i = 0; i < head; i++) {
+                out.append(whole.charAt(i));
+                if ((head - i - 1) % 2 == 0) {
+                    out.append(',');
+                }
+            }
+            out.append(whole, head, whole.length());
+        }
+        return (a.signum() < 0 ? "-" : "") + out + fraction;
     }
 
     private static String json(Map<String, Object> value) {

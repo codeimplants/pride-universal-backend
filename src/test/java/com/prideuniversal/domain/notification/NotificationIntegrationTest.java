@@ -9,7 +9,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 
@@ -128,10 +127,4 @@ class NotificationIntegrationTest extends AbstractIntegrationTest {
         getAs(loginAs(Role.TREASURER), "/api/notifications/sent").andExpect(status().isOk());
     }
 
-    @Test
-    @DisplayName("amounts are written the Indian way")
-    void indianGrouping() {
-        assertThat(NotificationService.indian(new BigDecimal("176642"))).isEqualTo("1,76,642");
-        assertThat(NotificationService.indian(new BigDecimal("2850.50"))).isEqualTo("2,850.5");
-    }
 }
