@@ -20,8 +20,16 @@ public record AppProperties(
         Sms sms,
         Storage storage,
         Cors cors,
-        Admin admin
+        Admin admin,
+        Push push
 ) {
+
+    /**
+     * Push notifications through Expo's push service, which forwards to FCM and APNs (as Nexus does).
+     * {@code enabled} false records notifications for the in-app inbox but sends nothing (tests).
+     * {@code expoAccessToken} is needed only if "enhanced push security" is on in the Expo project.
+     */
+    public record Push(boolean enabled, String expoAccessToken) {}
 
     /** Nexus (the Code Implants admin console) authenticates with this on /api/admin/**. */
     public record Admin(String serviceToken) {}

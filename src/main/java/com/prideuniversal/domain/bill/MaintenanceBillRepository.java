@@ -59,6 +59,15 @@ public interface MaintenanceBillRepository extends JpaRepository<MaintenanceBill
             """)
     BillTotals collected(@Param("year") int year, @Param("month") int month);
 
+    /** Rows of {@code [flatId, bill count, amount due]} for every flat with unpaid bills: the dues reminders. */
+    @Query("""
+            select b.flatId, count(b), coalesce(sum(b.amount + b.lateFee), 0)
+            from MaintenanceBill b
+            where b.status in :statuses
+            group by b.flatId
+            """)
+    List<Object[]> unpaidByFlat(@Param("statuses") java.util.Collection<BillStatus> statuses);
+
     /** Candidates for the nightly overdue sweep. */
     List<MaintenanceBill> findByStatusAndDueDateBefore(BillStatus status, LocalDate date);
 

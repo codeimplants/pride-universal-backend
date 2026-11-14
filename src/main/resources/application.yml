@@ -50,7 +50,9 @@ app:
     # Override in prod. Must be >= 32 bytes for HS256.
     secret: ${JWT_SECRET:dev-only-secret-change-me-in-production-32b+}
     access-token-ttl: PT1H
-    refresh-token-ttl: P30D
+    # Sliding: every refresh issues a new token with the full lifetime, so a member who opens the
+    # app at least once in this window never needs another OTP (each OTP is a paid SMS).
+    refresh-token-ttl: ${REFRESH_TOKEN_TTL:P90D}
     issuer: pride-universal
 
   otp:
@@ -72,6 +74,12 @@ app:
       api-key: ${MESSAGING_API_KEY:}
       # dev only: 123456, the fixed code every Code Implants app uses outside prod.
       fixed-code: ${MESSAGING_FIXED_CODE:}
+
+  push:
+    # Expo's push service (exp.host) forwards to FCM and APNs, the way Nexus sends its alerts.
+    # Off: notifications still reach the in-app inbox, nothing is sent to phones.
+    enabled: ${PUSH_ENABLED:true}
+    expo-access-token: ${EXPO_ACCESS_TOKEN:}
 
   storage:
     provider: ${STORAGE_PROVIDER:local}  # local | s3

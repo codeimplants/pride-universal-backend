@@ -60,7 +60,7 @@ public class TokenService {
      *
      * <p>Rotation matters: each refresh token is single-use, so a stolen one is
      * only usable until the legitimate client next refreshes. Without it, a
-     * leaked refresh token is valid for its full 30-day life.
+     * leaked refresh token is valid for its whole life (app.jwt.refresh-token-ttl).
      */
     @Transactional
     public RefreshResult refresh(String refreshValue, String userAgent) {
