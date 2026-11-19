@@ -122,12 +122,13 @@ class GateApiIntegrationTest extends AbstractIntegrationTest {
     @DisplayName("a visitor waiting at the gate alerts the flat, and the flat's answer alerts the guards")
     void visitorAlerts() throws Exception {
         Flat flat = createFlat();
+        // A resident's account exists from their first sign-in; only then can they be alerted.
+        String resident = loginAs(flat.getOwnerContact());
         String guard = loginAs(Role.SECURITY);
         Map<String, Object> v = new HashMap<>(Map.of("visitor_name", "Courier", "purpose", "delivery",
                 "wing", flat.getWing(), "flat_number", flat.getFlatNumber(), "await_approval", true));
         String id = body(postAs(guard, "/api/visitors", v)).get("id").asText();
 
-        String resident = loginAs(flat.getOwnerContact());
         getAs(resident, "/api/notifications").andExpect(jsonPath("$[0].params.event").value("waiting"));
         postAs(resident, "/api/visitors/" + id + "/approve", null).andExpect(status().isOk());
         getAs(guard, "/api/notifications").andExpect(jsonPath("$[0].params.event").value("approved"));
