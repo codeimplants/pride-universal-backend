@@ -21,8 +21,17 @@ public record AppProperties(
         Storage storage,
         Cors cors,
         Admin admin,
-        Push push
+        Push push,
+        Reviewer reviewer
 ) {
+
+    /** The store reviewer's number (Play / App Store "App access"). Signs in with Reviewer.code, no SMS. */
+    public static final String REVIEWER_MOBILE = "1234567890";
+
+    /** Off (the number cannot sign in) while code is blank. */
+    public record Reviewer(String code) {
+        public boolean enabled() { return code != null && !code.isBlank(); }
+    }
 
     /**
      * Push notifications through Expo's push service, which forwards to FCM and APNs (as Nexus does).

@@ -43,6 +43,8 @@ public class OtpService {
     private final PasswordEncoder passwordEncoder;
     private final SmsSender smsSender;
     private final AppProperties.Otp config;
+    /** Null unless REVIEWER_CODE is set. */
+    private final String reviewerCode;
 
     private final SecureRandom random = new SecureRandom();
 
@@ -74,6 +76,7 @@ public class OtpService {
         this.passwordEncoder = passwordEncoder;
         this.smsSender = smsSender;
         this.config = props.otp();
+        this.reviewerCode = props.reviewer() != null && props.reviewer().enabled() ? props.reviewer().code().strip() : null;
     }
 
     // ---------------------------------------------------------------------
@@ -111,7 +114,8 @@ public class OtpService {
         }
 
         // A test environment's sender may pin the code (123456); production never does.
-        String code = smsSender.fixedCode().orElseGet(this::generateCode);
+        boolean reviewer = isReviewer(mobile);
+        String code = reviewer ? reviewerCode : smsSender.fixedCode().orElseGet(this::generateCode);
 
         OtpRequest request = new OtpRequest();
         request.setMobile(mobile);
@@ -121,7 +125,11 @@ public class OtpService {
         request.setRequestIp(requestIp);
         otpRepository.save(request);
 
-        smsSender.sendOtp(mobile, code);
+        if (reviewer) {
+            log.info("Store reviewer sign-in requested; no SMS sent");
+        } else {
+            smsSender.sendOtp(mobile, code);
+        }
 
         // Returned only so the dev UI can show it without an SMS account.
         return config.devMode() ? code : null;
@@ -261,7 +269,15 @@ public class OtpService {
         }
     }
 
+    /** The store reviewer's number, only while REVIEWER_CODE is set. */
+    private boolean isReviewer(String mobile) {
+        return reviewerCode != null && AppProperties.REVIEWER_MOBILE.equals(mobile);
+    }
+
     private void requireValidMobile(String mobile) {
+        if (isReviewer(mobile)) {
+            return;
+        }
         if (mobile == null || !mobile.matches("^[6-9][0-9]{9}$")) {
             throw ApiException.badRequest("Enter a valid 10-digit Indian mobile number.");
         }

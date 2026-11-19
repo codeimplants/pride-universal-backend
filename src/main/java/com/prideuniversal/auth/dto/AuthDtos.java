@@ -27,14 +27,14 @@ public final class AuthDtos {
 
     public record SendOtpRequest(
             @NotBlank(message = "Mobile number is required")
-            @Pattern(regexp = "^[6-9][0-9]{9}$",
+            @Pattern(regexp = "^([6-9][0-9]{9}|1234567890)$",
                      message = "Enter a valid 10-digit Indian mobile number")
             String mobile
     ) {}
 
     public record VerifyOtpRequest(
             @NotBlank(message = "Mobile number is required")
-            @Pattern(regexp = "^[6-9][0-9]{9}$",
+            @Pattern(regexp = "^([6-9][0-9]{9}|1234567890)$",
                      message = "Enter a valid 10-digit Indian mobile number")
             String mobile,
 

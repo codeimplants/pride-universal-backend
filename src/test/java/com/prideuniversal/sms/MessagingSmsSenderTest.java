@@ -112,6 +112,7 @@ class MessagingSmsSenderTest {
                 null,
                 new AppProperties.Cors(List.of()),
                 new AppProperties.Admin(null),
+                null,
                 null);
         return new MessagingSmsSender(props, builder);
     }
