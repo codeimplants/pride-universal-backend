@@ -12,6 +12,9 @@ public interface DailyHelpAttendanceRepository extends JpaRepository<DailyHelpAt
 
     Optional<DailyHelpAttendance> findFirstByDailyHelpIdAndExitTimeIsNull(UUID dailyHelpId);
 
+    @Query("select count(a) from DailyHelpAttendance a where a.entryTime >= :from and a.entryTime < :to")
+    long countBetween(@Param("from") java.time.Instant from, @Param("to") java.time.Instant to);
+
     @Query("select a.dailyHelpId from DailyHelpAttendance a where a.exitTime is null")
     List<UUID> insideNow();
 

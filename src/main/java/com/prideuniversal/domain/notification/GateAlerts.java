@@ -33,31 +33,47 @@ public class GateAlerts {
     private static final ObjectMapper JSON = new ObjectMapper();
 
     /** event → language → {title, body}; {name}, {flat} and {what} are filled in. */
-    private static final Map<String, Map<String, String[]>> TEXT = Map.of(
-            "waiting", Map.of(
+    private static final Map<String, Map<String, String[]>> TEXT = Map.ofEntries(
+            Map.entry("waiting", Map.of(
                     "en", new String[] {"{name} is at the gate", "{what} for flat {flat}. Tap to let them in or turn them away."},
                     "mr", new String[] {"{name} गेटवर आहेत", "फ्लॅट {flat} साठी. आत सोडायचे की नाही, ते ठरवा."},
-                    "hi", new String[] {"{name} गेट पर हैं", "फ्लैट {flat} के लिए। अंदर आने दें या मना करें।"}),
-            "approved", Map.of(
+                    "hi", new String[] {"{name} गेट पर हैं", "फ्लैट {flat} के लिए। अंदर आने दें या मना करें।"})),
+            Map.entry("approved", Map.of(
                     "en", new String[] {"Let {name} in", "Flat {flat} approved the visitor."},
                     "mr", new String[] {"{name} यांना आत सोडा", "फ्लॅट {flat} ने परवानगी दिली."},
-                    "hi", new String[] {"{name} को अंदर आने दें", "फ्लैट {flat} ने अनुमति दी।"}),
-            "rejected", Map.of(
+                    "hi", new String[] {"{name} को अंदर आने दें", "फ्लैट {flat} ने अनुमति दी।"})),
+            Map.entry("rejected", Map.of(
                     "en", new String[] {"Don't let {name} in", "Flat {flat} turned the visitor away."},
                     "mr", new String[] {"{name} यांना आत सोडू नका", "फ्लॅट {flat} ने नकार दिला."},
-                    "hi", new String[] {"{name} को अंदर न आने दें", "फ्लैट {flat} ने मना किया।"}),
-            "pass_used", Map.of(
+                    "hi", new String[] {"{name} को अंदर न आने दें", "फ्लैट {flat} ने मना किया।"})),
+            Map.entry("pass_used", Map.of(
                     "en", new String[] {"{name} has arrived", "Let in at the gate with your pass."},
                     "mr", new String[] {"{name} आले आहेत", "तुमच्या गेट पासने आत सोडले."},
-                    "hi", new String[] {"{name} आ गए हैं", "आपके गेट पास से अंदर आने दिया गया।"}),
-            "help_in", Map.of(
+                    "hi", new String[] {"{name} आ गए हैं", "आपके गेट पास से अंदर आने दिया गया।"})),
+            Map.entry("help_in", Map.of(
                     "en", new String[] {"{name} has arrived", "Your {what} checked in at the gate."},
                     "mr", new String[] {"{name} आले आहेत", "गेटवर नोंद झाली."},
-                    "hi", new String[] {"{name} आ गए हैं", "गेट पर एंट्री हो गई।"}),
-            "help_out", Map.of(
+                    "hi", new String[] {"{name} आ गए हैं", "गेट पर एंट्री हो गई।"})),
+            Map.entry("help_out", Map.of(
                     "en", new String[] {"{name} has left", "Your {what} checked out at the gate."},
                     "mr", new String[] {"{name} गेले", "गेटवर बाहेर जाण्याची नोंद झाली."},
-                    "hi", new String[] {"{name} चले गए", "गेट पर एग्ज़िट दर्ज हो गई।"}));
+                    "hi", new String[] {"{name} चले गए", "गेट पर एग्ज़िट दर्ज हो गई।"})),
+            Map.entry("parcel", Map.of(
+                    "en", new String[] {"Parcel at the gate", "{name} parcel for flat {flat} is kept at the gate."},
+                    "mr", new String[] {"गेटवर पार्सल आहे", "फ्लॅट {flat} साठी {name} पार्सल गेटवर ठेवले आहे."},
+                    "hi", new String[] {"गेट पर पार्सल है", "फ्लैट {flat} के लिए {name} पार्सल गेट पर रखा है।"})),
+            Map.entry("child_exit", Map.of(
+                    "en", new String[] {"{name} went out of the gate", "The guard saw your child leave the society."},
+                    "mr", new String[] {"{name} गेटबाहेर गेले", "तुमचे मूल सोसायटीबाहेर जाताना गार्डने पाहिले."},
+                    "hi", new String[] {"{name} गेट से बाहर गए", "गार्ड ने आपके बच्चे को सोसायटी से बाहर जाते देखा।"})),
+            Map.entry("sos", Map.of(
+                    "en", new String[] {"🚨 SOS: {what}", "{name}, flat {flat}, needs help now."},
+                    "mr", new String[] {"🚨 SOS: {what}", "{name}, फ्लॅट {flat}, यांना तातडीने मदत हवी आहे."},
+                    "hi", new String[] {"🚨 SOS: {what}", "{name}, फ्लैट {flat}, को तुरंत मदद चाहिए।"})),
+            Map.entry("poll", Map.of(
+                    "en", new String[] {"New poll", "{name}"},
+                    "mr", new String[] {"नवीन मतदान", "{name}"},
+                    "hi", new String[] {"नया मतदान", "{name}"})));
 
     private final PushDeviceRepository devices;
     private final NotificationRepository notifications;
@@ -89,14 +105,25 @@ public class GateAlerts {
                     }
                 }
             }
-            send(users, "flat", flat, event, name, flat, what, refId);
+            send(users, "flat", flat, event, name, flat, what, refId, screenFor(event));
         });
     }
 
     /** Every active guard. */
     public void toGate(String event, String name, String flat, String what, String refId) {
         afterCommit(() -> send(audiences.activeWithRoles(EnumSet.of(Role.SECURITY)), "security", null,
-                event, name, flat, what, refId));
+                event, name, flat, what, refId, "visitors"));
+    }
+
+    /** Active accounts with these roles (e.g. the guards and the committee for an SOS). */
+    public void toRoles(java.util.Collection<Role> roles, String event, String name, String flat, String what,
+                        String refId, String screen) {
+        afterCommit(() -> send(audiences.activeWithRoles(roles), "gate_staff", null, event, name, flat, what, refId, screen));
+    }
+
+    /** Every active account. */
+    public void toAll(String event, String name, String what, String refId, String screen) {
+        afterCommit(() -> send(audiences.allActive(), "all", null, event, name, null, what, refId, screen));
     }
 
     // ---------------------------------------------------------------------
@@ -122,7 +149,7 @@ public class GateAlerts {
     }
 
     private void send(List<UUID> users, String audience, String audienceValue,
-                      String event, String name, String flat, String what, String refId) {
+                      String event, String name, String flat, String what, String refId, String screen) {
         if (users.isEmpty()) {
             return;
         }
@@ -147,14 +174,14 @@ public class GateAlerts {
             n.setParams(json(params));
             n.setAudience(audience);
             n.setAudienceValue(audienceValue);
-            n.setScreen("visitors");
+            n.setScreen(screen);
             n.setSentBy("Gate");
             n.setRecipients(users.size());
             notifications.saveAndFlush(n);
             recipients.saveAll(users.stream().map(u -> NotificationRecipient.of(n.getId(), u)).toList());
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("notificationId", n.getId().toString());
-            data.put("screen", "visitors");
+            data.put("screen", screen);
             List<ExpoPushClient.Message> messages = devices.findAllByUserIdIn(users).stream().map(d -> {
                 String[] t = text(event, d.getLanguage(), name, flat, what);
                 return new ExpoPushClient.Message(d.getToken(), t[0], t[1], data);
@@ -172,6 +199,14 @@ public class GateAlerts {
                 devices.deleteByTokenIn(result.deadTokens());
             }
         });
+    }
+
+    private static String screenFor(String event) {
+        return switch (event) {
+            case "parcel" -> "gate";
+            case "help_in", "help_out" -> "gate";
+            default -> "visitors";
+        };
     }
 
     static String[] text(String event, String language, String name, String flat, String what) {

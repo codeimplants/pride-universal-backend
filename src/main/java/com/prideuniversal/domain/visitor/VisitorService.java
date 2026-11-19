@@ -6,6 +6,7 @@ import com.prideuniversal.common.Role;
 import com.prideuniversal.common.Text;
 import com.prideuniversal.domain.flat.Flat;
 import com.prideuniversal.domain.flat.FlatRepository;
+import com.prideuniversal.domain.gate.BlacklistRepository;
 import com.prideuniversal.domain.notification.GateAlerts;
 import com.prideuniversal.domain.visitor.dto.VisitorDtos.LogVisitorRequest;
 import com.prideuniversal.domain.visitor.dto.VisitorDtos.VisitorResponse;
@@ -42,8 +43,11 @@ public class VisitorService {
     private final VisitorRepository visitorRepository;
     private final FlatRepository flatRepository;
     private final GateAlerts alerts;
+    private final BlacklistRepository blacklist;
 
-    public VisitorService(VisitorRepository visitorRepository, FlatRepository flatRepository, GateAlerts alerts) {
+    public VisitorService(VisitorRepository visitorRepository, FlatRepository flatRepository, GateAlerts alerts,
+                          BlacklistRepository blacklist) {
+        this.blacklist = blacklist;
         this.visitorRepository = visitorRepository;
         this.flatRepository = flatRepository;
         this.alerts = alerts;
@@ -77,6 +81,13 @@ public class VisitorService {
         Flat flat = flatRepository.findByWingAndFlatNumber(wing, number)
                 .filter(Flat::isActive)
                 .orElseThrow(() -> ApiException.badRequest("There is no flat " + wing + "-" + number + "."));
+
+        String contact = Text.blankToNull(request.visitorContact());
+        String vehicle = normaliseVehicle(request.vehicleNumber());
+        blacklist.match(contact, vehicle).stream().findFirst().ifPresent(b -> {
+            throw ApiException.conflict("Blacklisted: " + b.getName()
+                    + (b.getReason() == null ? "" : " (" + b.getReason() + ")") + ". Don't let them in; inform the committee.");
+        });
 
         Visitor v = new Visitor();
         v.setVisitorName(request.visitorName().trim());

@@ -26,6 +26,9 @@ public interface VisitorRepository extends JpaRepository<Visitor, UUID> {
             """)
     List<Visitor> forFlat(@Param("flatId") UUID flatId, @Param("status") VisitorStatus status);
 
+    @Query("select v from Visitor v where v.createdDate >= :from and v.createdDate < :to")
+    List<Visitor> between(@Param("from") java.time.Instant from, @Param("to") java.time.Instant to);
+
     long countByStatus(VisitorStatus status);
 
     long countByFlatIdAndStatus(UUID flatId, VisitorStatus status);

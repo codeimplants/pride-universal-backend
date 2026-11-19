@@ -62,13 +62,36 @@ public final class ComplaintDtos {
             String photoUrl,
             Instant createdDate,
             Instant updatedDate,
-            Long version
+            Long version,
+            Instant dueAt,
+            boolean overdue
     ) {
+        /** Helpdesk deadline by priority: urgent 1 day, high 2, medium 3, low 7. */
+        public static Instant dueAt(Complaint c) {
+            if (c.getCreatedDate() == null) {
+                return null;
+            }
+            int days = switch (c.getPriority() == null ? ComplaintPriority.MEDIUM : c.getPriority()) {
+                case URGENT -> 1;
+                case HIGH -> 2;
+                case MEDIUM -> 3;
+                case LOW -> 7;
+            };
+            return c.getCreatedDate().plus(java.time.Duration.ofDays(days));
+        }
+
+        private static boolean finished(ComplaintStatus s) {
+            String code = s == null ? "" : s.getCode();
+            return code.equals("resolved") || code.equals("closed") || code.equals("rejected");
+        }
+
         public static ComplaintResponse from(Complaint c) {
             return new ComplaintResponse(c.getId(), c.getComplaintNumber(), c.getFlatId(), c.getWing(),
                     c.getFlatNumber(), c.getRaisedBy(), c.getContact(), c.getCategory(), c.getTitle(),
                     c.getDescription(), c.getStatus(), c.getPriority(), c.getAssignedTo(), c.getAdminNotes(),
-                    c.getResolvedDate(), c.getPhotoUrl(), c.getCreatedDate(), c.getUpdatedDate(), c.getVersion());
+                    c.getResolvedDate(), c.getPhotoUrl(), c.getCreatedDate(), c.getUpdatedDate(), c.getVersion(),
+                    dueAt(c), c.getResolvedDate() == null && !finished(c.getStatus()) && dueAt(c) != null
+                            && Instant.now().isAfter(dueAt(c)));
         }
     }
 }
