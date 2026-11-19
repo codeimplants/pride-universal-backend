@@ -80,15 +80,16 @@ CREATE TABLE amenity (
     id            UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
     name          VARCHAR(120)  NOT NULL,
     description   VARCHAR(500),
-    open_time     TIME          NOT NULL DEFAULT '06:00',
-    close_time    TIME          NOT NULL DEFAULT '22:00',
+    -- Times of day as minutes since midnight: a wall-clock time has no time zone to shift.
+    open_minute   INT           NOT NULL DEFAULT 360,
+    close_minute  INT           NOT NULL DEFAULT 1320,
     max_hours     INT           NOT NULL DEFAULT 4,
     fee           NUMERIC(10,2) NOT NULL DEFAULT 0,
     active        BOOLEAN       NOT NULL DEFAULT true,
     created_date  TIMESTAMPTZ   NOT NULL DEFAULT now(),
     updated_date  TIMESTAMPTZ   NOT NULL DEFAULT now(),
     version       BIGINT        NOT NULL DEFAULT 0,
-    CONSTRAINT ck_amenity_hours CHECK (close_time > open_time AND max_hours BETWEEN 1 AND 24)
+    CONSTRAINT ck_amenity_hours CHECK (open_minute >= 0 AND close_minute <= 1440 AND close_minute > open_minute AND max_hours BETWEEN 1 AND 24)
 );
 CREATE TABLE amenity_booking (
     id            UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -98,14 +99,14 @@ CREATE TABLE amenity_booking (
     booked_by     VARCHAR(160),
     booked_by_id  UUID         REFERENCES app_user(id) ON DELETE SET NULL,
     booking_date  DATE         NOT NULL,
-    start_time    TIME         NOT NULL,
-    end_time      TIME         NOT NULL,
+    start_minute  INT          NOT NULL,
+    end_minute    INT          NOT NULL,
     purpose       VARCHAR(255),
     cancelled     BOOLEAN      NOT NULL DEFAULT false,
     created_date  TIMESTAMPTZ  NOT NULL DEFAULT now(),
     updated_date  TIMESTAMPTZ  NOT NULL DEFAULT now(),
     version       BIGINT       NOT NULL DEFAULT 0,
-    CONSTRAINT ck_booking_time CHECK (end_time > start_time)
+    CONSTRAINT ck_booking_time CHECK (start_minute >= 0 AND end_minute <= 1440 AND end_minute > start_minute)
 );
 CREATE INDEX idx_booking_day ON amenity_booking (amenity_id, booking_date);
 

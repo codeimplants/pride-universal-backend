@@ -38,10 +38,12 @@ public class AmenityBooking extends BaseEntity {
     @Column(name = "booking_date", nullable = false)
     private LocalDate bookingDate;
 
-    @Column(name = "start_time", nullable = false)
+    @jakarta.persistence.Convert(converter = MinuteOfDay.class)
+    @Column(name = "start_minute", nullable = false)
     private LocalTime startTime;
 
-    @Column(name = "end_time", nullable = false)
+    @jakarta.persistence.Convert(converter = MinuteOfDay.class)
+    @Column(name = "end_minute", nullable = false)
     private LocalTime endTime;
 
     @Column(name = "purpose", length = 255)

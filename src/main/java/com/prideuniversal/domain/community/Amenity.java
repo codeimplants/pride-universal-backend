@@ -26,10 +26,12 @@ public class Amenity extends BaseEntity {
     @Column(name = "description", length = 500)
     private String description;
 
-    @Column(name = "open_time", nullable = false)
+    @jakarta.persistence.Convert(converter = MinuteOfDay.class)
+    @Column(name = "open_minute", nullable = false)
     private LocalTime openTime;
 
-    @Column(name = "close_time", nullable = false)
+    @jakarta.persistence.Convert(converter = MinuteOfDay.class)
+    @Column(name = "close_minute", nullable = false)
     private LocalTime closeTime;
 
     @Column(name = "max_hours", nullable = false)
