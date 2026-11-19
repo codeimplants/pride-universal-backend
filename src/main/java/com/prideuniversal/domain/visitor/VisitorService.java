@@ -6,6 +6,7 @@ import com.prideuniversal.common.Role;
 import com.prideuniversal.common.Text;
 import com.prideuniversal.domain.flat.Flat;
 import com.prideuniversal.domain.flat.FlatRepository;
+import com.prideuniversal.domain.notification.GateAlerts;
 import com.prideuniversal.domain.visitor.dto.VisitorDtos.LogVisitorRequest;
 import com.prideuniversal.domain.visitor.dto.VisitorDtos.VisitorResponse;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -40,10 +41,12 @@ public class VisitorService {
 
     private final VisitorRepository visitorRepository;
     private final FlatRepository flatRepository;
+    private final GateAlerts alerts;
 
-    public VisitorService(VisitorRepository visitorRepository, FlatRepository flatRepository) {
+    public VisitorService(VisitorRepository visitorRepository, FlatRepository flatRepository, GateAlerts alerts) {
         this.visitorRepository = visitorRepository;
         this.flatRepository = flatRepository;
+        this.alerts = alerts;
     }
 
     @Transactional(readOnly = true)
@@ -92,7 +95,12 @@ public class VisitorService {
         } else {
             admit(v, guard);
         }
-        return VisitorResponse.from(visitorRepository.save(v));
+        Visitor saved = visitorRepository.save(v);
+        if (saved.getStatus() == VisitorStatus.PENDING) {
+            alerts.toFlats(List.of(flat.getId()), "waiting", saved.getVisitorName(), label(saved),
+                    saved.getPurpose().getCode(), saved.getId().toString());
+        }
+        return VisitorResponse.from(saved);
     }
 
     @Transactional
@@ -101,7 +109,11 @@ public class VisitorService {
         Visitor v = findActionable(id, caller);
         requireStatus(v, VisitorStatus.PENDING, "approved");
         admit(v, caller);
-        return VisitorResponse.from(visitorRepository.saveAndFlush(v));
+        Visitor saved = visitorRepository.saveAndFlush(v);
+        if (!isGate(caller)) {
+            alerts.toGate("approved", v.getVisitorName(), label(v), null, v.getId().toString());
+        }
+        return VisitorResponse.from(saved);
     }
 
     @Transactional
@@ -113,7 +125,11 @@ public class VisitorService {
         v.setApprovedBy(caller.displayName());
         v.setApprovedById(caller.userId());
         v.setRejectedReason(Text.blankToNull(reason));
-        return VisitorResponse.from(visitorRepository.saveAndFlush(v));
+        Visitor saved = visitorRepository.saveAndFlush(v);
+        if (!isGate(caller)) {
+            alerts.toGate("rejected", v.getVisitorName(), label(v), null, v.getId().toString());
+        }
+        return VisitorResponse.from(saved);
     }
 
     @PreAuthorize(GATE)
@@ -128,7 +144,11 @@ public class VisitorService {
 
     // ---------------------------------------------------------------------
 
-    static boolean isGate(AuthPrincipal caller) {
+    private static String label(Visitor v) {
+        return v.getWing() + "-" + v.getFlatNumber();
+    }
+
+    public static boolean isGate(AuthPrincipal caller) {
         return caller.isManagement() || caller.role() == Role.SECURITY;
     }
 

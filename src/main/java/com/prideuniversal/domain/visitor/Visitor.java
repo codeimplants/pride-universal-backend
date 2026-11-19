@@ -65,6 +65,10 @@ public class Visitor extends BaseEntity {
     @Column(columnDefinition = "text")
     private String notes;
 
+    /** The gate pass the visitor came in on, if any. */
+    @Column(name = "pass_id")
+    private UUID passId;
+
     @Column(name = "created_by_security", length = 160)
     private String createdBySecurity;
 }

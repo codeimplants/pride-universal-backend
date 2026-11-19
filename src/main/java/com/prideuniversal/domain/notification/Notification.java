@@ -21,6 +21,7 @@ import java.util.UUID;
 public class Notification extends BaseEntity {
 
     public static final String MESSAGE = "message";
+    public static final String GATE = "gate";
     public static final String DUES_REMINDER = "dues_reminder";
 
     @Column(nullable = false, length = 24)
