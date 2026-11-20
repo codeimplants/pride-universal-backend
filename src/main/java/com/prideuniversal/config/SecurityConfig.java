@@ -81,6 +81,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/auth/otp/send", "/api/auth/otp/verify").permitAll()
                 .requestMatchers("/api/auth/refresh", "/api/auth/logout").permitAll()
                 .requestMatchers("/actuator/health", "/actuator/info").permitAll()
+                .requestMatchers("/child-safety", "/child-safety.html").permitAll()
                 .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 
